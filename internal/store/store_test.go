@@ -70,7 +70,7 @@ func TestMigrateIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != 2 {
 		t.Fatalf("migrations recorded: %d %v", n, err)
 	}
 	// Concurrent migrators must not fail.
@@ -454,5 +454,21 @@ func TestEngineAgainstPostgres(t *testing.T) {
 	}
 	if strings.Join(kinds, ",") != "turned_red,incident_update,recovered" {
 		t.Fatalf("alerts %v", kinds)
+	}
+}
+
+func TestKV(t *testing.T) {
+	r, ctx := testRepo(t)
+	if _, err := r.GetKV(ctx, "k"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing key: %v", err)
+	}
+	if err := r.SetKV(ctx, "k", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetKV(ctx, "k", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := r.GetKV(ctx, "k"); err != nil || v != "2" {
+		t.Fatalf("kv = %q %v", v, err)
 	}
 }

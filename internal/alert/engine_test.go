@@ -221,3 +221,50 @@ func TestFormatUnits(t *testing.T) {
 		}
 	}
 }
+
+func TestEngineLinkFormat(t *testing.T) {
+	e := NewEngine(EngineConfig{DashboardURL: "https://argus.example/", LinkFormat: DashboardLinkFormat}, nil, nil, nil, nil)
+	got := e.tokenLink("nep141:wrap.near")
+	if want := "https://argus.example/token/?id=nep141%3Awrap.near"; got != want {
+		t.Fatalf("link = %q, want %q", got, want)
+	}
+}
+
+func TestEngineOnTransitionHook(t *testing.T) {
+	st := &fakeStates{m: map[string]model.TokenState{}}
+	inc := &fakeIncidents{m: map[int64]*model.Incident{}}
+	q := NewMemoryQueue()
+	var got []Transition
+	e := NewEngine(EngineConfig{Alert: Config{K: 2}, OnTransition: func(tr Transition) { got = append(got, tr) }}, st, inc, q, fakeTokens{})
+	mk := func(block uint64, gap string) model.Snapshot {
+		return model.Snapshot{TokenID: "nep141:t.near", BlockHeight: block, BlockTime: t0.Add(time.Duration(block) * time.Second), Gap: gap}
+	}
+	ctx := context.Background()
+	for i, gap := range []string{"-5", "-5", "-9", "0"} {
+		if err := e.Process(ctx, []model.Snapshot{mk(uint64(10+i), gap)}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var kinds []Kind
+	for _, tr := range got {
+		kinds = append(kinds, tr.Kind)
+		if (tr.Kind == TurnedRed || tr.Kind == IncidentUpdate || tr.Kind == Recovered) && tr.IncidentID != 1 {
+			t.Errorf("%s carries incident %d", tr.Kind, tr.IncidentID)
+		}
+	}
+	want := []Kind{TurnedAmber, TurnedRed, IncidentUpdate, Recovered}
+	if len(kinds) != len(want) {
+		t.Fatalf("kinds = %v", kinds)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("kinds = %v, want %v", kinds, want)
+		}
+	}
+	// A panicking hook must not break processing.
+	e2 := NewEngine(EngineConfig{Alert: Config{K: 1}, OnTransition: func(Transition) { panic("boom") }},
+		&fakeStates{m: map[string]model.TokenState{}}, &fakeIncidents{m: map[int64]*model.Incident{}}, NewMemoryQueue(), fakeTokens{})
+	if err := e2.Process(ctx, []model.Snapshot{mk(1, "-1")}, nil); err != nil {
+		t.Fatalf("panic leaked: %v", err)
+	}
+}

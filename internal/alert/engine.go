@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -39,9 +40,21 @@ type TokenLister interface {
 // EngineConfig configures an Engine.
 type EngineConfig struct {
 	Alert        Config
-	DashboardURL string // base URL; the token id is appended as /token/<id>
-	Logger       *slog.Logger
-	Now          func() time.Time
+	DashboardURL string // base URL of the dashboard
+	// LinkFormat builds the per-token link from DashboardURL. {base} is the
+	// base URL without a trailing slash, {id} the URL-escaped token id.
+	// Empty selects the legacy
+	// "{base}/token/{id}" (path-escaped id) is used. The SvelteKit dashboard
+	// uses DashboardLinkFormat.
+	LinkFormat string
+	Logger     *slog.Logger
+	Now        func() time.Time
+	// OnTransition, when set, is called for every transition once its side
+	// effects (incident open/update/close, queueing) have succeeded. For
+	// TurnedRed the Transition carries the new IncidentID. It runs on the
+	// alert path, so it must return quickly and must not fail the round:
+	// start a goroutine for slow work. Panics are recovered and logged.
+	OnTransition func(Transition)
 }
 
 // Engine wires Step to persistence and the alert queue.
@@ -209,8 +222,24 @@ func (e *Engine) apply(ctx context.Context, st model.TokenState, trs []Transitio
 				return st, fmt.Errorf("enqueue alert: %w", err)
 			}
 		}
+		if t.Kind == TurnedRed {
+			t.IncidentID = st.OpenIncidentID
+		}
+		e.notifyTransition(t)
 	}
 	return st, nil
+}
+
+func (e *Engine) notifyTransition(t Transition) {
+	if e.cfg.OnTransition == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			e.cfg.Logger.Error("alert: OnTransition panicked", "panic", r)
+		}
+	}()
+	e.cfg.OnTransition(t)
 }
 
 func (e *Engine) newAlert(t Transition, meta map[string]model.Token, now time.Time) Alert {
@@ -226,9 +255,21 @@ func (e *Engine) newAlert(t Transition, meta map[string]model.Token, now time.Ti
 		a.Symbol, a.Decimals = tok.Symbol, tok.Decimals
 	}
 	if e.cfg.DashboardURL != "" {
-		a.DashboardURL = fmt.Sprintf("%s/token/%s", trimSlash(e.cfg.DashboardURL), url.PathEscape(t.TokenID))
+		a.DashboardURL = e.tokenLink(t.TokenID)
 	}
 	return a
+}
+
+// DashboardLinkFormat is the token route of the bundled web/ dashboard
+// (ids travel in the query string; see web/src/lib/links.ts).
+const DashboardLinkFormat = "{base}/token/?id={id}"
+
+func (e *Engine) tokenLink(id string) string {
+	base := trimSlash(e.cfg.DashboardURL)
+	if e.cfg.LinkFormat == "" {
+		return fmt.Sprintf("%s/token/%s", base, url.PathEscape(id))
+	}
+	return strings.NewReplacer("{base}", base, "{id}", url.QueryEscape(id)).Replace(e.cfg.LinkFormat)
 }
 
 func trimSlash(s string) string {

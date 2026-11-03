@@ -30,6 +30,10 @@ type Token struct {
 	InnerID  string `json:"inner_id,omitempty"`
 	Symbol   string `json:"symbol"`
 	Decimals int    `json:"decimals"`
+	// Chain is a human label for the network the asset comes from ("NEAR",
+	// "Ethereum", "BNB Chain"...). Symbols repeat across chains, so show it
+	// next to the symbol. Derived from the id by tokens.ChainOf; display only.
+	Chain string `json:"chain,omitempty"`
 	// Source records how the token was discovered: "enumeration",
 	// "1click", or "config".
 	Source    string    `json:"source"`
