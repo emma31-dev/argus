@@ -1,0 +1,84 @@
+# Argus local/VM stack: Postgres, Redis, the monitor + API, and the dashboard.
+# Copy .env.example to .env to customise. Everything works without a .env.
+name: argus
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-argus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-argus}
+      POSTGRES_DB: ${POSTGRES_DB:-argus}
+    ports:
+      - "127.0.0.1:5432:5432" # local-only, handy for ARGUS_TEST_DATABASE_URL
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-argus} -d $${POSTGRES_DB:-argus}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379" # local-only
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  argus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: argus:local
+    restart: unless-stopped
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      # Values here override .env. Postgres credentials follow POSTGRES_* so they stay in sync.
+      DATABASE_URL: postgres://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus}@postgres:5432/${POSTGRES_DB:-argus}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./evidence:/app/evidence:ro
+      - ./config:/app/config:ro
+    healthcheck:
+      # distroless has no shell, curl or wget, so the binary checks itself.
+      test: ["CMD", "/app/argus", "-healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  dashboard:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: argus-dashboard:local
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - argus
+
+volumes:
+  pgdata:
+  redisdata:

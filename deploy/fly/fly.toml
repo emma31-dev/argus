@@ -1,0 +1,52 @@
+# Fly.io app for the Argus monitor + API (the Go binary, not the dashboard).
+#
+# Run from the REPO ROOT so the root Dockerfile and build context are used:
+#   fly secrets set DATABASE_URL=... -c deploy/fly/fly.toml
+#   fly deploy -c deploy/fly/fly.toml
+# Check the file first with: fly config validate -c deploy/fly/fly.toml
+#
+# Secrets (never put these here): DATABASE_URL, REDIS_URL, TELEGRAM_BOT_TOKEN,
+# TELEGRAM_CHAT_ID, LLM_API_KEY.
+
+app = "argus-monitor"
+primary_region = "ams"
+
+[env]
+  ARGUS_HTTP_ADDR = ":8080"
+  ARGUS_LOG_LEVEL = "info"
+  ARGUS_RPC_URLS = "https://rpc.mainnet.fastnear.com,https://rpc.mainnet.near.org"
+  ARGUS_ARCHIVAL_RPC_URLS = "https://archival-rpc.mainnet.fastnear.com,https://archival-rpc.mainnet.near.org"
+  ARGUS_RPC_RPS = "5"
+  ARGUS_INTENTS_ACCOUNT = "intents.near"
+  ARGUS_INTERVAL = "30s"
+  ARGUS_DEBOUNCE_K = "4"
+  ARGUS_BATCH_SIZE = "50"
+  ARGUS_CONCURRENCY = "8"
+  ARGUS_DISCOVERY_INTERVAL = "24h"
+  ARGUS_ONECLICK_TOKENS_URL = "https://1click.chaindefuser.com/v0/tokens"
+  ARGUS_NEARDATA_URL = "https://mainnet.neardata.xyz"
+  ARGUS_EVENTS_ENABLED = "false"
+  ARGUS_PUBLIC_URL = "https://argus-monitor.fly.dev"
+  ARGUS_API_RATE_LIMIT = "60"
+  ARGUS_CORS_ORIGINS = "*"
+  ARGUS_RETENTION = "720h"
+  LLM_ENABLED = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

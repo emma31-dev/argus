@@ -1,0 +1,4 @@
+# SPA fallback for Cloudflare Pages: unknown paths serve the dashboard shell.
+# Pages reads this file from the root of the build output, so copy it into
+# web/static/ (or into web/build/ after the build) before deploying.
+/*    /index.html   200

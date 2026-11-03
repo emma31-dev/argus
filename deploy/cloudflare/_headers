@@ -1,0 +1,16 @@
+# Security headers for Cloudflare Pages. Replace argus-monitor.fly.dev with your
+# monitor's host (the value of PUBLIC_API_BASE) so connect-src allows the API.
+# Like _redirects, copy this into web/static/ so it lands in the build output root.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://argus-monitor.fly.dev; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/_app/immutable/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.html
+  Cache-Control: no-cache
