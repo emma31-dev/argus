@@ -15,9 +15,13 @@ export interface Provider {
 
 export interface StatusResponse {
 	status: Status;
+	/** True when no round completed within max(5x interval, 2 min), or none ever. Status is then 'unknown'. */
+	monitor_stale?: boolean;
+	/** 0 before the first round. */
 	last_block: number;
-	last_block_time: string;
-	last_checked_at: string;
+	/** null before the first round. */
+	last_block_time: string | null;
+	last_checked_at: string | null;
 	interval_seconds: number;
 	debounce_snapshots: number;
 	tokens_total: number;
@@ -65,7 +69,7 @@ export interface TokensResponse {
 }
 
 export interface HistoryResponse {
-	token: { id: string; symbol: string; decimals: number };
+	token: { id: string; symbol: string; decimals: number; chain?: string };
 	points: Snapshot[];
 }
 
@@ -73,6 +77,7 @@ export interface Incident {
 	id: number;
 	token_id: string;
 	symbol: string;
+	chain?: string;
 	decimals: number;
 	start_block: number;
 	red_block: number;
@@ -109,16 +114,24 @@ export interface IncidentsResponse {
 export interface ReplayPoint extends Snapshot {
 	label: string;
 	status: Status;
+	/** The exact view calls behind this point, e.g. "query call_function intents.near.mt_batch_supply({...}) at block_id 1". */
+	owed_query?: string;
+	held_query?: string;
 }
 
 export interface ReplayToken {
 	id: string;
 	symbol: string;
+	chain?: string;
 	decimals: number;
 	points: ReplayPoint[];
+	/** 0 if none. */
 	first_negative_block: number;
+	/** 0 if the debounce never fired on these samples. */
 	detected_red_block: number;
 	max_deficit: string;
+	time_to_detect_seconds?: number | null;
+	detection_note?: string;
 }
 
 export interface ReplayResponse {
@@ -126,6 +139,8 @@ export interface ReplayResponse {
 	generated_at: string;
 	rpc_provider: string;
 	notes: string;
+	debounce_k?: number;
+	cadence_seconds?: number;
 	tokens: ReplayToken[];
 }
 

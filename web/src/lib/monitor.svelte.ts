@@ -10,6 +10,9 @@ class Monitor {
 
 	intervalMs = $derived((this.status.data?.interval_seconds ?? 30) * 1000);
 
+	/** No snapshot round has ever completed (last_checked_at is null / last_block is 0). */
+	neverChecked = $derived(!!this.status.data && (!this.status.data.last_checked_at || !this.status.data.last_block));
+
 	/** Milliseconds since the last completed snapshot round. */
 	ageMs = $derived.by(() => {
 		const at = this.status.data?.last_checked_at;
@@ -18,11 +21,35 @@ class Monitor {
 		return Number.isNaN(t) ? null : Math.max(0, clock.now - t);
 	});
 
-	/** Data older than 3x the check interval is flagged as stale. */
-	stale = $derived(this.ageMs !== null && this.ageMs > 3 * this.intervalMs);
+	/**
+	 * The monitor has stopped producing fresh rounds. The API's own
+	 * `monitor_stale` is authoritative; our 3x-interval check is a fallback
+	 * for older API versions and for the time between polls.
+	 */
+	stale = $derived(
+		!!this.status.data &&
+			(this.status.data.monitor_stale === true ||
+				this.neverChecked ||
+				(this.ageMs !== null && this.ageMs > 3 * this.intervalMs))
+	);
 
-	/** No successful response, or the latest request failed. */
+	/** Every configured RPC provider reported unhealthy. */
+	providersDown = $derived.by(() => {
+		const p = this.status.data?.providers ?? [];
+		return p.length > 0 && p.every((x) => !x.healthy);
+	});
+
+	/** The latest status request failed because the API is unreachable. */
 	offline = $derived(this.status.error !== null && this.status.error.offline);
+
+	/** What the header pill says. */
+	pill = $derived.by<'live' | 'stale' | 'waiting' | 'offline' | 'loading'>(() => {
+		if (this.offline) return 'offline';
+		if (!this.status.data) return 'loading';
+		if (this.neverChecked) return 'waiting';
+		if (this.stale) return 'stale';
+		return 'live';
+	});
 }
 
 export const monitor = new Monitor();

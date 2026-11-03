@@ -10,6 +10,7 @@
 	import TokenTable from '$lib/components/TokenTable.svelte';
 	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
 	import StaleBanner from '$lib/components/StaleBanner.svelte';
+	import ProvidersBanner from '$lib/components/ProvidersBanner.svelte';
 	import BlockLink from '$lib/components/BlockLink.svelte';
 	import Ago from '$lib/components/Ago.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -53,7 +54,8 @@
 		{#if error && (monitor.status.settled || tokens.settled)}
 			<OfflineBanner {error} {retry} hasData={!!status} />
 		{/if}
-		<StaleBanner />
+		<ProvidersBanner />
+		<StaleBanner deferToProviders />
 
 		{#if status}
 			<StatusHero {status} />
@@ -104,7 +106,11 @@
 			<h2 id="tokens-h">Tokens</h2>
 			{#if tokens.data}
 				<p class="muted">
-					Latest snapshot at block <BlockLink height={tokens.data.block_height} /> ·
+					{#if tokens.data.block_height}
+						Latest snapshot at block <BlockLink height={tokens.data.block_height} /> ·
+					{:else}
+						No snapshot round completed yet ·
+					{/if}
 					{formatInteger(tokens.data.tokens.length)} tracked
 				</p>
 			{/if}

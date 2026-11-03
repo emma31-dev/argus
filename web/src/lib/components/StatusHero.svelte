@@ -12,11 +12,17 @@
 
 	const counts = $derived(status.tokens_by_status ?? { green: 0, amber: 0, red: 0, unknown: 0 });
 	const total = $derived(status.tokens_total || Object.values(counts).reduce((a, b) => a + b, 0));
-	const meta = $derived(statusMeta(status.status));
+	const halted = $derived(monitor.neverChecked || monitor.stale);
+	const meta = $derived.by(() => {
+		const m = statusMeta(status.status);
+		return halted ? { ...statusMeta('unknown'), icon: 'clock' as const, label: monitor.neverChecked ? 'Waiting' : 'Stale' } : m;
+	});
 
 	const headline = $derived.by(() => {
 		const n = (k: Status) => counts[k] ?? 0;
 		const t = (c: number) => `${c} ${c === 1 ? 'token' : 'tokens'}`;
+		if (monitor.neverChecked) return 'Waiting for the first snapshot round';
+		if (monitor.stale) return 'The monitor is not checking right now';
 		if (status.status === 'red') return `Deficit on ${t(n('red'))}`;
 		if (status.status === 'amber') return `${t(n('amber'))} below zero, settling`;
 		if (status.status === 'unknown' && n('green') === 0) return 'Waiting for the first snapshot';
@@ -25,6 +31,10 @@
 	});
 
 	const sub = $derived.by(() => {
+		if (monitor.neverChecked)
+			return `Argus is running but has not completed a same-block read yet, so it cannot vouch for any token. Figures appear here after the first successful round.`;
+		if (monitor.stale)
+			return `No snapshot round has completed ${monitor.ageMs !== null ? `for ${formatAgo(monitor.ageMs).replace(' ago', '')}` : 'recently'}. Until one does, Argus cannot vouch for any token; figures below are from the last successful round.`;
 		if (status.status === 'red')
 			return `The ledger owes more than the contract holds and the gap persisted for ${status.debounce_snapshots} consecutive snapshots.`;
 		if (status.status === 'amber')
@@ -71,12 +81,14 @@
 		<div class="metric">
 			<dt>Last checked block</dt>
 			<dd class="big"><BlockLink height={status.last_block} /></dd>
-			<dd class="note" title={formatUtc(status.last_block_time)}>{formatUtc(status.last_block_time)}</dd>
+			<dd class="note">{status.last_block_time ? formatUtc(status.last_block_time) : 'No round completed yet'}</dd>
 		</div>
 		<div class="metric">
 			<dt>Last check</dt>
-			<dd class="big num" class:stale={monitor.stale}>{ago === null ? '—' : formatAgo(ago)}</dd>
-			<dd class="note">{monitor.stale ? 'Stale: no round completed recently' : 'Snapshot round completed'}</dd>
+			<dd class="big num" class:stale={monitor.stale && !monitor.neverChecked}>{ago === null ? 'Never' : formatAgo(ago)}</dd>
+			<dd class="note">
+				{monitor.neverChecked ? 'No round completed yet' : monitor.stale ? 'Stale: no round completed recently' : 'Snapshot round completed'}
+			</dd>
 		</div>
 		<div class="metric">
 			<dt>Check interval</dt>

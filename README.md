@@ -184,7 +184,7 @@ Every setting is an environment variable documented in [.env.example](.env.examp
 
 - **Free-tier RPC.** Public endpoints rate-limit; Argus spaces calls per provider and falls back across several. Non-archival nodes keep about 36 hours of history, so older reads need archival RPC, which is severely rate limited for free.
 - **Token metadata.** Tokens found by `mt_tokens` that no metadata source knows still get raw owed and held values, but no symbol or decimals.
-- **Benign permanent gaps.** Fee-on-transfer or rebasing tokens could show a standing surplus or deficit; per-token thresholds (`ARGUS_RED_THRESHOLDS`) and K tune this.
+- **Benign permanent gaps.** A fee-on-transfer or rebasing token could show a standing deficit that is not an exploit. Argus would keep it red; a per-token allowance is on the roadmap. `ARGUS_RED_THRESHOLDS` works the other way: it makes large deficits alert immediately instead of after K snapshots.
 - **Roadmap:** run the capability checks and the archival replay, publish the measured detection time, USD values from the 1Click price field, a public deployment, and AI incident summaries (built, off by default: they only write text and never decide alert state).
 
 ## License

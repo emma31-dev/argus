@@ -56,14 +56,25 @@
 			{/each}
 		</nav>
 		<div class="right">
-			{#if st && !monitor.offline}
-				<a href={href.home()} class="live" title="Overall status: {statusMeta(st.status).label}">
-					<StatusDot status={monitor.stale ? 'amber' : st.status} pulse={!monitor.stale} size={7} />
-					<span class="live-label">{monitor.stale ? 'Stale' : 'Live'}</span>
+			{#if monitor.pill === 'live' && st}
+				<a href={href.home()} class="live" title="Overall status: {statusMeta(st.status).label}. Last round at block {formatInteger(st.last_block)}.">
+					<StatusDot status={st.status} pulse size={7} />
+					<span class="live-label">Live</span>
 					<span class="live-block mono num">#{formatInteger(st.last_block)}</span>
 				</a>
-			{:else if monitor.status.settled && monitor.offline}
-				<span class="live off"><StatusDot status="unknown" size={7} /><span class="live-label">Offline</span></span>
+			{:else if monitor.pill === 'stale' && st}
+				<a href={href.home()} class="live stale" title="No snapshot round has completed recently">
+					<StatusDot status="amber" size={7} />
+					<span class="live-label">Stale</span>
+					{#if st.last_block}<span class="live-block mono num">#{formatInteger(st.last_block)}</span>{/if}
+				</a>
+			{:else if monitor.pill === 'waiting'}
+				<a href={href.home()} class="live" title="The monitor is up but has not completed a snapshot round yet">
+					<StatusDot status="unknown" size={7} />
+					<span class="live-label">Waiting</span>
+				</a>
+			{:else if monitor.pill === 'offline' && monitor.status.settled}
+				<span class="live off" title="The Argus API cannot be reached"><StatusDot status="unknown" size={7} /><span class="live-label">Offline</span></span>
 			{/if}
 			<a class="icon-btn" href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Source on GitHub" title="Source on GitHub"
 				><GithubMark size={16} /></a
