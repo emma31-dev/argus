@@ -1,0 +1,8 @@
+{
+  "kind": "synthetic",
+  "provider": "synthetic",
+  "rounds": 12,
+  "k": 4,
+  "intents_account": "intents.near",
+  "description": "Invented balances shaped like NEAR JSON-RPC responses. NOT mainnet data."
+}

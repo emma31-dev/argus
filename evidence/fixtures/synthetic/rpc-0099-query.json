@@ -1,0 +1,52 @@
+{
+  "provider": "synthetic",
+  "request": {
+    "id": "99",
+    "jsonrpc": "2.0",
+    "method": "query",
+    "params": {
+      "account_id": "hot.synthetic.near",
+      "args_base64": "eyJhY2NvdW50X2lkIjoiaW50ZW50cy5uZWFyIiwidG9rZW5faWQiOiI1Nl9TWU5USEVUSUMifQ==",
+      "block_id": 1000330,
+      "method_name": "mt_balance_of",
+      "request_type": "call_function"
+    }
+  },
+  "response": {
+    "id": "99",
+    "jsonrpc": "2.0",
+    "result": {
+      "block_hash": "SYNTHETIC-HASH-1000330",
+      "block_height": 1000330,
+      "logs": [],
+      "result": [
+        34,
+        55,
+        53,
+        48,
+        48,
+        50,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        34
+      ]
+    }
+  }
+}

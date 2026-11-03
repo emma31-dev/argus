@@ -1,0 +1,40 @@
+{
+  "provider": "synthetic",
+  "request": {
+    "id": "88",
+    "jsonrpc": "2.0",
+    "method": "query",
+    "params": {
+      "account_id": "wbtc.synthetic.near",
+      "args_base64": "eyJhY2NvdW50X2lkIjoiaW50ZW50cy5uZWFyIn0=",
+      "block_id": 1000300,
+      "method_name": "ft_balance_of",
+      "request_type": "call_function"
+    }
+  },
+  "response": {
+    "id": "88",
+    "jsonrpc": "2.0",
+    "result": {
+      "block_hash": "SYNTHETIC-HASH-1000300",
+      "block_height": 1000300,
+      "logs": [],
+      "result": [
+        34,
+        49,
+        50,
+        48,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        49,
+        48,
+        48,
+        34
+      ]
+    }
+  }
+}

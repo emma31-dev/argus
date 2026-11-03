@@ -1,0 +1,25 @@
+{
+  "provider": "synthetic",
+  "request": {
+    "id": "100",
+    "jsonrpc": "2.0",
+    "method": "block",
+    "params": {
+      "finality": "final"
+    }
+  },
+  "response": {
+    "id": "100",
+    "jsonrpc": "2.0",
+    "result": {
+      "author": "synthetic.near",
+      "chunks": [],
+      "header": {
+        "hash": "SYNTHETIC-HASH-1000360",
+        "height": 1000360,
+        "timestamp": 1767225960000000000,
+        "timestamp_nanosec": "1767225960000000000"
+      }
+    }
+  }
+}

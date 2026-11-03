@@ -1,0 +1,93 @@
+{
+  "note": "Computed by internal/fixturegen's independent oracle from the scenario definition, not by running the alert code.",
+  "rounds": 12,
+  "final": {
+    "nep141:dai.synthetic.near": {
+      "status": "green",
+      "gap": "1000000000000000"
+    },
+    "nep141:eth.synthetic.near": {
+      "status": "red",
+      "gap": "-5000000000000000000"
+    },
+    "nep141:usdc.synthetic.near": {
+      "status": "green",
+      "gap": "60000"
+    },
+    "nep141:usdt.synthetic.near": {
+      "status": "green",
+      "gap": "0"
+    },
+    "nep141:wbtc.synthetic.near": {
+      "status": "green",
+      "gap": "100"
+    },
+    "nep141:wnear.synthetic.near": {
+      "status": "green",
+      "gap": "2000000000000000000000007"
+    },
+    "nep245:hot.synthetic.near:56_SYNTHETIC": {
+      "status": "green",
+      "gap": "10000000000000000000"
+    }
+  },
+  "transitions": [
+    {
+      "token": "nep141:wbtc.synthetic.near",
+      "kind": "amber",
+      "block": 1000060
+    },
+    {
+      "token": "nep141:eth.synthetic.near",
+      "kind": "amber",
+      "block": 1000150
+    },
+    {
+      "token": "nep141:wbtc.synthetic.near",
+      "kind": "red",
+      "block": 1000150
+    },
+    {
+      "token": "nep141:dai.synthetic.near",
+      "kind": "amber",
+      "block": 1000180
+    },
+    {
+      "token": "nep141:dai.synthetic.near",
+      "kind": "false_alarm_cleared",
+      "block": 1000210
+    },
+    {
+      "token": "nep141:wbtc.synthetic.near",
+      "kind": "recovered",
+      "block": 1000210
+    },
+    {
+      "token": "nep141:eth.synthetic.near",
+      "kind": "red",
+      "block": 1000240
+    }
+  ],
+  "alerts": [
+    {
+      "kind": "turned_red",
+      "token": "nep141:wbtc.synthetic.near",
+      "block": 1000150
+    },
+    {
+      "kind": "recovered",
+      "token": "nep141:wbtc.synthetic.near",
+      "block": 1000210
+    },
+    {
+      "kind": "turned_red",
+      "token": "nep141:eth.synthetic.near",
+      "block": 1000240
+    },
+    {
+      "kind": "incident_update",
+      "token": "nep141:eth.synthetic.near",
+      "block": 1000270
+    }
+  ]
+}

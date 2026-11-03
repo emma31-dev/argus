@@ -1,0 +1,41 @@
+# EXAMPLE replay plan. Every value below is a PLACEHOLDER, not a real plan.
+#
+# `go run ./cmd/replay` refuses to run this file on purpose (block_height 0 and
+# ids that are not valid token ids are rejected). The real plan goes in
+# evidence/replay-plan.yaml once the affected token ids and block range are
+# confirmed on archival RPC.
+#
+# Workflow (needs network access to an archival NEAR RPC):
+#   1. Turn UTC timestamps into heights:
+#        go run ./cmd/replay -find-heights 2026-09-29T16:00:00Z,2026-10-01T05:54:00Z
+#   2. Copy this file to evidence/replay-plan.yaml and fill it in.
+#   3. go run ./cmd/replay            # fetches, caches, writes the JSON and Markdown
+#   4. go run ./cmd/replay -offline   # redoes it from evidence/replay-cache only
+#
+# UNVERIFIED hypothesis from docs/research.md (do not treat as fact): the
+# affected asset may be USDT on BSC via HOT Omni,
+# nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g, 18 decimals, with the
+# exploit window roughly 2026-09-29 16:14 to 2026-10-01 05:54 UTC and the
+# contract paused at about 08:33 UTC on 2026-10-01. No block heights are known.
+title: "PLACEHOLDER: NEAR Intents incident replay"
+notes: "PLACEHOLDER: what was replayed and why. Say clearly that the token ids and heights were confirmed from <source>."
+
+intents_account: intents.near
+
+# Archival endpoints, tried in order. Omit to use ARGUS_ARCHIVAL_RPC_URLS or
+# the built-in defaults. Do not put API keys in a committed file.
+archival_providers:
+  - https://archival-rpc.mainnet.near.org
+
+tokens:
+  - id: "nep141:REPLACE-ME.near"     # invalid on purpose
+    symbol: XXX
+    decimals: 0
+
+points:                               # any order; sorted by height when run
+  - block_height: 0                   # invalid on purpose
+    label: "before the exploit"
+  - block_height: 0
+    label: "during the exploit"
+  - block_height: 0
+    label: "after the pause"
