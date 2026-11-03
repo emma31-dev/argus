@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","result":{"error":"wasm execution failed with error: FunctionCallError(MethodResolveError(MethodNotFound))","logs":[],"block_height":123456789,"block_hash":"SyntheticBlockHash11111111111111111111111111"}}

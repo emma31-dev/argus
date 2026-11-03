@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","error":{"name":"HANDLER_ERROR","cause":{"info":{"requested_account_id":"nope.near"},"name":"UNKNOWN_ACCOUNT"},"code":-32000,"message":"Server error","data":"account nope.near does not exist while viewing"}}

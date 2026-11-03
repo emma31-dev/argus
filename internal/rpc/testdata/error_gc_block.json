@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","error":{"name":"HANDLER_ERROR","cause":{"info":{},"name":"GARBAGE_COLLECTED_BLOCK"},"code":-32000,"message":"Server error","data":"The requested block has been garbage collected"}}

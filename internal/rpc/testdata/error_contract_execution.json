@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","error":{"name":"HANDLER_ERROR","cause":{"info":{"error_message":"wasm execution failed with error: FunctionCallError(HostError(GuestPanic { panic_msg: \"synthetic panic\" }))"},"name":"CONTRACT_EXECUTION_ERROR"},"code":-32000,"message":"Server error","data":"synthetic"}}

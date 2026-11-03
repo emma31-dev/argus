@@ -1,0 +1,35 @@
+# Fallback token list for Argus discovery (PRD 5.1, last resort).
+#
+# This list is only used when both NEP-245 enumeration on intents.near and the
+# 1Click supported-tokens API are unavailable. Entries here also override
+# symbol and decimals from the other sources. It is a short, hand-picked list
+# of well-known tokens and is NOT exhaustive: cross-check it against the live
+# 1Click list (https://1click.chaindefuser.com/v0/tokens) before relying on
+# it, and never treat a token missing from here as untracked by Intents.
+#
+# Decimals are the token contract's own (smallest unit = 10^-decimals).
+tokens:
+  - id: "nep141:wrap.near"
+    symbol: wNEAR
+    decimals: 24
+  - id: "nep141:usdt.tether-token.near"
+    symbol: USDT
+    decimals: 6
+  - id: "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+    symbol: USDC
+    decimals: 6
+  - id: "nep141:eth.omft.near"
+    symbol: ETH
+    decimals: 18
+  - id: "nep141:btc.omft.near"
+    symbol: BTC
+    decimals: 8
+  - id: "nep141:sol.omft.near"
+    symbol: SOL
+    decimals: 9
+  - id: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near"
+    symbol: USDC (Ethereum)
+    decimals: 6
+  - id: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near"
+    symbol: USDT (Ethereum)
+    decimals: 6

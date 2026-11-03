@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"1","error":{"name":"HANDLER_ERROR","cause":{"info":{"block_reference":{"block_id":{"block_height":1}}},"name":"UNKNOWN_BLOCK"},"code":-32000,"message":"Server error","data":"DB Not Found Error: BLOCK HEIGHT: 1 \n Cause: Unknown"}}
