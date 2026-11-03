@@ -1,35 +1,95 @@
 # Fallback token list for Argus discovery (PRD 5.1, last resort).
 #
-# This list is only used when both NEP-245 enumeration on intents.near and the
-# 1Click supported-tokens API are unavailable. Entries here also override
-# symbol and decimals from the other sources. It is a short, hand-picked list
-# of well-known tokens and is NOT exhaustive: cross-check it against the live
-# 1Click list (https://1click.chaindefuser.com/v0/tokens) before relying on
-# it, and never treat a token missing from here as untracked by Intents.
+# Used only when both intents.near mt_tokens enumeration and the 1Click
+# supported-tokens API (https://1click.chaindefuser.com/v0/tokens) are
+# unavailable. Entries here also override symbol and decimals from the other
+# sources. NOT exhaustive: never treat a token missing from here as untracked
+# by Intents.
 #
-# Decimals are the token contract's own (smallest unit = 10^-decimals).
+# Source for every row: NEAR Intents' own production token list,
+# defuse-protocol/defuse-frontend@594085d src/tokens/production.json
+# (2026-10-06), picked by trading-volume rank. See docs/research.md section 5.3.
+# Decimals are the NEAR-side token's own (smallest unit = 10^-decimals);
+# capability check 2 should confirm each one against ft_metadata.
+#
+# held(T): nep141 -> <contract>.ft_balance_of(intents.near)
+#          nep245 -> <contract>.mt_balance_of(intents.near, <inner_id>)
 tokens:
   - id: "nep141:wrap.near"
     symbol: wNEAR
     decimals: 24
+  - id: "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+    symbol: USDC
+    decimals: 6
   - id: "nep141:usdt.tether-token.near"
     symbol: USDT
     decimals: 6
-  - id: "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+  - id: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near"  # USDT (Ethereum)
+    symbol: USDT
+    decimals: 6
+  - id: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near"  # USDC (Ethereum)
     symbol: USDC
+    decimals: 6
+  - id: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near"  # USDC (Base)
+    symbol: USDC
+    decimals: 6
+  - id: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near"  # USDC (Arbitrum)
+    symbol: USDC
+    decimals: 6
+  - id: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"  # USDC (Solana)
+    symbol: USDC
+    decimals: 6
+  - id: "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near"  # USDT (Solana)
+    symbol: USDT
+    decimals: 6
+  - id: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near"  # USDT (Tron)
+    symbol: USDT
     decimals: 6
   - id: "nep141:eth.omft.near"
     symbol: ETH
     decimals: 18
-  - id: "nep141:btc.omft.near"
+  - id: "nep141:base.omft.near"  # ETH (Base)
+    symbol: ETH
+    decimals: 18
+  - id: "nep141:arb.omft.near"  # ETH (Arbitrum)
+    symbol: ETH
+    decimals: 18
+  - id: "nep141:eth.bridge.near"  # Rainbow-bridged ETH
+    symbol: ETH
+    decimals: 18
+  - id: "nep141:nbtc.bridge.near"  # BTC via NEAR Omni (current)
     symbol: BTC
+    decimals: 8
+  - id: "nep141:btc.omft.near"  # "BTC (LEGACY)", deprecated in UI but may still hold balances
+    symbol: BTC
+    decimals: 8
+  - id: "nep141:eth-0x2260fac5e5542a773aa44fbcfedf7c193bc2c599.omft.near"
+    symbol: WBTC
     decimals: 8
   - id: "nep141:sol.omft.near"
     symbol: SOL
     decimals: 9
-  - id: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near"
-    symbol: USDC (Ethereum)
+  - id: "nep141:zec.omft.near"
+    symbol: ZEC
+    decimals: 8
+  - id: "nep141:doge.omft.near"
+    symbol: DOGE
+    decimals: 8
+  - id: "nep141:xrp.omft.near"
+    symbol: XRP
     decimals: 6
-  - id: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near"
-    symbol: USDT (Ethereum)
+  - id: "nep141:tron.omft.near"
+    symbol: TRX
+    decimals: 6
+  - id: "nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g"  # USDT (BSC), prime replay candidate
+    symbol: USDT
+    decimals: 18
+  - id: "nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r"  # USDC (BSC)
+    symbol: USDC
+    decimals: 18
+  - id: "nep245:v2_1.omni.hot.tg:56_11111111111111111111"
+    symbol: BNB
+    decimals: 18
+  - id: "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr"  # USDT (Polygon)
+    symbol: USDT
     decimals: 6

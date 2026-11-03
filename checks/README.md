@@ -29,9 +29,12 @@ go run ./checks/06-archival -block <height>
 Environment:
 
 - `ARGUS_RPC_URLS`: comma-separated RPC URLs for checks 1, 2, 3 and 5. Default:
-  `https://rpc.mainnet.fastnear.com`, `https://rpc.mainnet.near.org`.
+  `https://free.rpc.fastnear.com`, `https://rpc.mainnet.fastnear.com`,
+  `https://rpc.mainnet.near.org`.
 - `ARGUS_ARCHIVAL_RPC_URLS`: comma-separated archival URLs for check 6. Default:
-  `https://archival-rpc.mainnet.fastnear.com`, `https://archival-rpc.mainnet.near.org`.
+  `https://archival-rpc.mainnet.near.org` (the only documented free archival
+  endpoint, severely rate limited), `https://archival-rpc.mainnet.fastnear.com`
+  (may need a key).
 
 The checks use the same `internal/rpc` client as the monitor, at a conservative
 2 requests per second per provider. If the network is unreachable they print

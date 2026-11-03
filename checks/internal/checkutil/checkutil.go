@@ -25,12 +25,12 @@ const (
 
 // DefaultRPC and DefaultArchival are used when the environment is unset.
 func DefaultRPC() []string {
-	return []string{"https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"}
+	return []string{"https://free.rpc.fastnear.com", "https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"}
 }
 
 // DefaultArchival lists the free archival endpoints, in order.
 func DefaultArchival() []string {
-	return []string{"https://archival-rpc.mainnet.fastnear.com", "https://archival-rpc.mainnet.near.org"}
+	return []string{"https://archival-rpc.mainnet.near.org", "https://archival-rpc.mainnet.fastnear.com"}
 }
 
 // URLs reads a comma-separated URL list from env, else returns def.
