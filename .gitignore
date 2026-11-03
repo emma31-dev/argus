@@ -1,0 +1,20 @@
+# Go
+/bin/
+/dist/
+*.test
+coverage.out
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Web
+web/node_modules/
+web/.svelte-kit/
+web/build/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
