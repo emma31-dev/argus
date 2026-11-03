@@ -72,6 +72,20 @@ type TokenState struct {
 	OpenIncidentID     int64     `json:"open_incident_id,omitempty"`
 	LastBlock          uint64    `json:"last_block"`
 	UpdatedAt          time.Time `json:"updated_at"`
+
+	// The fields below are used by the debounce state machine
+	// (internal/alert) to keep Step a pure function of (state, snapshot).
+
+	// MaxDeficit is the largest deficit (positive integer string) seen in the
+	// current negative streak; empty when the streak is 0.
+	MaxDeficit      string `json:"max_deficit,omitempty"`
+	MaxDeficitBlock uint64 `json:"max_deficit_block,omitempty"`
+	// RedBlock is the block at which the token turned red (0 unless red).
+	RedBlock uint64 `json:"red_block,omitempty"`
+	// Stale is true when the most recent read of this token failed; the
+	// status and streak are deliberately left untouched in that case.
+	Stale     bool   `json:"stale,omitempty"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 // Incident is a red period for a token.
