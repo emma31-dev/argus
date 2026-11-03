@@ -1,0 +1,85 @@
+{
+  "block": {
+    "author": "synthetic.poolv1.near",
+    "header": {"height": 1000, "hash": "SynthHash1000", "timestamp": 1790000000000000000, "timestamp_nanosec": "1790000000000000000", "prev_hash": "SynthHash999"},
+    "chunks": []
+  },
+  "shards": [
+    {
+      "shard_id": 0,
+      "chunk": null,
+      "receipt_execution_outcomes": [
+        {
+          "execution_outcome": {
+            "id": "SynthReceiptMint",
+            "block_hash": "SynthHash1000",
+            "outcome": {
+              "executor_id": "intents.near",
+              "logs": [
+                "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_mint\",\"data\":[{\"owner_id\":\"alice.near\",\"token_ids\":[\"nep141:wrap.near\",\"nep141:usdt.tether-token.near\"],\"amounts\":[\"1000000000000000000000000\",\"5\"],\"memo\":\"deposit\"}]}",
+                "EVENT_JSON:{\"standard\":\"dip4\",\"version\":\"0.4.3\",\"event\":\"token_diff\",\"data\":[{\"intent_hash\":\"SynthIntentHash\",\"account_id\":\"alice.near\",\"diff\":{\"nep141:wrap.near\":\"-100\",\"nep141:usdt.tether-token.near\":\"7\"}}]}"
+              ],
+              "status": {"SuccessValue": ""},
+              "receipt_ids": [],
+              "gas_burnt": 1,
+              "tokens_burnt": "1",
+              "metadata": {"version": 3, "gas_profile": []}
+            },
+            "proof": []
+          },
+          "receipt": {"predecessor_id": "bridge.near", "receipt_id": "SynthReceiptMint", "receiver_id": "intents.near", "receipt": {"Action": {"actions": []}}, "priority": 0},
+          "tx_hash": "SynthTxMint"
+        },
+        {
+          "execution_outcome": {
+            "id": "SynthReceiptFailed",
+            "block_hash": "SynthHash1000",
+            "outcome": {
+              "executor_id": "intents.near",
+              "logs": ["EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_mint\",\"data\":[{\"owner_id\":\"mallory.near\",\"token_ids\":[\"nep141:wrap.near\"],\"amounts\":[\"999\"]}]}"],
+              "status": {"Failure": {"ActionError": {"index": 0, "kind": {"FunctionCallError": {"ExecutionError": "synthetic"}}}}},
+              "receipt_ids": []
+            },
+            "proof": []
+          },
+          "receipt": {"predecessor_id": "x.near", "receipt_id": "SynthReceiptFailed", "receiver_id": "intents.near", "receipt": {"Action": {"actions": []}}, "priority": 0},
+          "tx_hash": "SynthTxFailed"
+        },
+        {
+          "execution_outcome": {
+            "id": "SynthReceiptOther",
+            "block_hash": "SynthHash1000",
+            "outcome": {
+              "executor_id": "other.near",
+              "logs": ["EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_mint\",\"data\":[{\"owner_id\":\"eve.near\",\"token_ids\":[\"nep141:wrap.near\"],\"amounts\":[\"1\"]}]}"],
+              "status": {"SuccessValue": ""},
+              "receipt_ids": []
+            },
+            "proof": []
+          },
+          "receipt": {"predecessor_id": "x.near", "receipt_id": "SynthReceiptOther", "receiver_id": "other.near", "receipt": {"Action": {"actions": []}}, "priority": 0},
+          "tx_hash": "SynthTxOther"
+        },
+        {
+          "execution_outcome": {
+            "id": "SynthReceiptBurn",
+            "block_hash": "SynthHash1000",
+            "outcome": {
+              "executor_id": "intents.near",
+              "logs": [
+                "just a plain log",
+                "EVENT_JSON:{\"standard\":\"nep245\",\"version\":\"1.0.0\",\"event\":\"mt_burn\",\"data\":[{\"owner_id\":\"alice.near\",\"token_ids\":[\"nep141:wrap.near\"],\"amounts\":[\"400\"],\"memo\":\"withdraw\"}]}"
+              ],
+              "status": {"SuccessReceiptId": "SynthNextReceipt"},
+              "receipt_ids": ["SynthNextReceipt"]
+            },
+            "proof": []
+          },
+          "receipt": {"predecessor_id": "alice.near", "receipt_id": "SynthReceiptBurn", "receiver_id": "intents.near", "receipt": {"Action": {"actions": []}}, "priority": 0},
+          "tx_hash": "SynthTxBurn"
+        }
+      ],
+      "state_changes": []
+    }
+  ]
+}
