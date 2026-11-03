@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="theme-color" content="#fbfbfc" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0a0b0d" media="(prefers-color-scheme: dark)" />
+		<meta name="description" content="Argus independently checks, block by block, that NEAR Intents holds every token it owes its users." />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+		<script>
+			// Apply the persisted theme before first paint to avoid a flash.
+			try {
+				var t = localStorage.getItem('argus-theme');
+				if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+			} catch (e) {}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

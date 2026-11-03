@@ -8,3 +8,5 @@ build
 *.log
 Dockerfile
 .dockerignore
+dev/.screens
+docs/screenshots
