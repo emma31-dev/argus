@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/emma31-dev/argus/internal/alert"
 	"github.com/emma31-dev/argus/internal/events"
 )
 
@@ -29,8 +31,12 @@ type Config struct {
 	TokensFile     string
 	OneClickURL    string
 
-	Interval          time.Duration
-	K                 int
+	Interval time.Duration
+	K        int
+	// RedThresholds are absolute deficits (smallest units) that turn a token
+	// red immediately, without waiting for K snapshots. Key "*" is the
+	// default for every token.
+	RedThresholds     map[string]*big.Int
 	BatchSize         int
 	Concurrency       int
 	DiscoveryInterval time.Duration
@@ -140,6 +146,11 @@ func LoadConfig(getenv func(string) string, requireDB bool) (Config, error) {
 	c.DiscoveryInterval = dur("ARGUS_DISCOVERY_INTERVAL", "24h")
 	c.Retention = dur("ARGUS_RETENTION", "720h")
 	c.K = integer("ARGUS_DEBOUNCE_K", 4, 1)
+	if th, err := parseThresholds(getenv("ARGUS_RED_THRESHOLDS")); err != nil {
+		errs = append(errs, err)
+	} else {
+		c.RedThresholds = th
+	}
 	c.BatchSize = integer("ARGUS_BATCH_SIZE", 50, 1)
 	c.Concurrency = integer("ARGUS_CONCURRENCY", 8, 1)
 	c.APIRateLimit = integer("ARGUS_API_RATE_LIMIT", 60, 0)
@@ -211,4 +222,41 @@ func providerNames(urls []string) []string {
 		}
 	}
 	return out
+}
+
+// parseThresholds parses ARGUS_RED_THRESHOLDS: comma-separated
+// "<token id>=<deficit in smallest units>" pairs, with "*" as the default
+// for all tokens. Token ids contain ':' but never '=' or ','.
+func parseThresholds(raw string) (map[string]*big.Int, error) {
+	out := map[string]*big.Int{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, amount, ok := strings.Cut(part, "=")
+		id, amount = strings.TrimSpace(id), strings.TrimSpace(amount)
+		v, okNum := new(big.Int).SetString(amount, 10)
+		if !ok || id == "" || !okNum || v.Sign() <= 0 {
+			return nil, fmt.Errorf("ARGUS_RED_THRESHOLDS: %q: want <token id or *>=<positive integer in smallest units>", part)
+		}
+		out[id] = v
+	}
+	return out, nil
+}
+
+// alertConfig builds the debounce configuration from c.
+func (c Config) alertConfig() alert.Config {
+	ac := alert.Config{K: c.K}
+	for id, v := range c.RedThresholds {
+		if id == "*" {
+			ac.DefaultAbsThreshold = v
+			continue
+		}
+		if ac.AbsThreshold == nil {
+			ac.AbsThreshold = map[string]*big.Int{}
+		}
+		ac.AbsThreshold[id] = v
+	}
+	return ac
 }

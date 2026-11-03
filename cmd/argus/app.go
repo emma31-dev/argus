@@ -61,7 +61,7 @@ func NewApp(cfg Config, log *slog.Logger, repo *store.Repo, client *rpc.Client, 
 		minBackoff: 5 * time.Second, maxBackoff: 5 * time.Minute,
 	}
 	a.engine = alert.NewEngine(alert.EngineConfig{
-		Alert:        alert.Config{K: cfg.K},
+		Alert:        cfg.alertConfig(),
 		DashboardURL: cfg.PublicURL,
 		LinkFormat:   alert.DashboardLinkFormat,
 		Logger:       log,

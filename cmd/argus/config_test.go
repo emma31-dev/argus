@@ -61,3 +61,25 @@ func TestProviderNames(t *testing.T) {
 		t.Fatalf("names = %v", got)
 	}
 }
+
+func TestParseThresholds(t *testing.T) {
+	th, err := parseThresholds(" nep141:wrap.near=1000000000000000000000000 , *=5 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th["nep141:wrap.near"].String() != "1000000000000000000000000" || th["*"].String() != "5" {
+		t.Fatalf("got %v", th)
+	}
+	ac := Config{K: 4, RedThresholds: th}.alertConfig()
+	if ac.K != 4 || ac.DefaultAbsThreshold.String() != "5" || ac.AbsThreshold["nep141:wrap.near"] == nil {
+		t.Fatalf("alert config %+v", ac)
+	}
+	for _, bad := range []string{"x", "nep141:a=", "=5", "nep141:a=-1", "nep141:a=1.5", "nep141:a=0"} {
+		if _, err := parseThresholds(bad); err == nil {
+			t.Errorf("%q: want error", bad)
+		}
+	}
+	if th, err := parseThresholds(""); err != nil || len(th) != 0 {
+		t.Fatalf("empty: %v %v", th, err)
+	}
+}
