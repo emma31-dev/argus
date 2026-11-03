@@ -30,6 +30,8 @@
 
 	const path = $derived(page.url.pathname.slice(base.length) || '/');
 	const st = $derived(monitor.status.data);
+	// "0.1.0" -> "v0.1.0"; non-numeric builds ("dev") are shown as-is.
+	const version = $derived(st?.version ? (/^\d/.test(st.version) ? `v${st.version}` : st.version) : '');
 
 	onMount(() => {
 		theme.init();
@@ -113,7 +115,7 @@
 			<a href={href.how()}>Methodology</a>
 			<a href={href.api()}>API</a>
 			<a href={REPO_URL} target="_blank" rel="noopener noreferrer">Source</a>
-			{#if st?.version}<span class="mono muted">v{st.version}</span>{/if}
+			{#if version}<span class="mono muted">{version}</span>{/if}
 		</div>
 	</div>
 </footer>

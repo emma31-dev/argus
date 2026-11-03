@@ -17,6 +17,11 @@ static site that reads the [Argus API](../docs/api.md) from the browser.
 
 Phone width: [overview](docs/screenshots/overview-390-light.png), [token](docs/screenshots/token-390-light.png).
 
+Real output: the dashboard against the actual Go backend in a sandbox where every NEAR RPC provider is
+blocked. No round has completed, so it says so and shows no figures:
+
+![Overview against the real backend, all RPC providers unreachable](docs/screenshots/overview-1440-live-offline.png)
+
 ## Develop
 
 Requires Node 20+ and pnpm 10.
@@ -38,7 +43,11 @@ pnpm test         # vitest: BigInt amount formatting, chain labels
 pnpm build        # static site in build/
 pnpm preview      # serve build/ (also proxies /v1)
 node dev/screenshots.mjs [outDir] [--only=overview,token] [--widths=1440,390] [--themes=light,dark] [--full]
+# BASE_URL (default http://localhost:5173) and MOCK_URL (default http://localhost:8080) are configurable,
+# e.g. run the mock on another port: MOCK_PORT=8081 ARGUS_API_PROXY=http://localhost:8081 pnpm dev:mock
 ```
+
+Note: `vite preview` indexes `build/` when it starts, so restart it after every `pnpm build`.
 
 The screenshot script uses the Playwright + Chromium installed on the machine; it is not a project
 dependency.
@@ -75,9 +84,12 @@ rounding, percentages and formatting in integer arithmetic. Numbers only become 
 `toTokenNumber`, for chart geometry, after scaling to whole tokens. Every displayed amount carries
 its exact value and raw integer in a tooltip; token pages show the raw values with copy buttons.
 
-The dashboard never invents numbers: loading shows skeletons, an unreachable API shows "Monitor
-offline" with retry, data older than 3x the check interval shows a stale warning, and a token whose
-last read failed (`stale: true`) is flagged.
+The dashboard never invents numbers: loading shows skeletons; an unreachable API shows "Monitor
+offline" with retry; before the first round the header reads "Waiting" and the overview says no
+round has completed; `monitor_stale` (or, as a fallback, data older than 3x the interval) turns the
+header to "Stale" with a warning; when every RPC provider is unhealthy a banner lists each host and
+its error; a token whose last read failed (`stale: true`) gets a one-line summary with the raw
+error in a disclosure.
 
 ## Design system
 

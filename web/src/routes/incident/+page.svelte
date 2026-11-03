@@ -130,7 +130,7 @@
 					<IncidentBadge {open} />
 				</div>
 				<p class="lede">
-					<a class="link" href={href.token(d.token_id)}><strong>{d.symbol}</strong></a> <ChainChip id={d.token_id} />: the intents.near ledger owed more than
+					<a class="link" href={href.token(d.token_id)}><strong>{d.symbol}</strong></a> <ChainChip id={d.token_id} chain={d.chain} />: the intents.near ledger owed more than
 					the contract held, for longer than the settling window.
 					<span class="tid mono">{d.token_id}</span>
 				</p>

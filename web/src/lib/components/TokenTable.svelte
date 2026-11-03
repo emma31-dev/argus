@@ -12,6 +12,7 @@
 	import Icon from './Icon.svelte';
 	import ChainChip from './ChainChip.svelte';
 	import { chainLabel } from '$lib/chain';
+	import { summarizeReadError } from '$lib/errors';
 
 	let { tokens, loading = false }: { tokens: Token[] | null; loading?: boolean } = $props();
 
@@ -192,14 +193,16 @@
 							<td class="r pct num" class:neg={r.pct !== null && r.pct < 0}>{formatPercent(r.pct)}</td>
 							<td class="r c-block">
 								{#if r.t.stale}
-									<span class="stale" title="Last read failed{r.t.last_error ? `: ${r.t.last_error}` : ''}. Showing the last successful snapshot.">
+									<span class="stale" title="{summarizeReadError(r.t.last_error)} Showing the last successful snapshot.">
 										<Icon name="clock" size={12} stroke={2.25} /><span class="sr-only">Stale:</span>
 									</span>
 								{/if}
 								<BlockLink height={r.t.latest.block_height} />
 							</td>
 						{:else}
-							<td class="r muted" colspan="5">No successful snapshot yet</td>
+							<td class="r muted" colspan="5" title={r.t.stale ? summarizeReadError(r.t.last_error) : undefined}>
+								No successful snapshot yet{r.t.stale ? ' · last read failed' : ''}
+							</td>
 						{/if}
 					</tr>
 				{/each}
@@ -233,7 +236,7 @@
 								</div>
 							</dl>
 						{:else}
-							<p class="muted tc-none">No successful snapshot yet</p>
+							<p class="muted tc-none">No successful snapshot yet{r.t.stale ? ' · last read failed' : ''}</p>
 						{/if}
 					</a>
 				</li>

@@ -103,8 +103,8 @@ const TOKENS = [
 	T('nep141:eth.omft.near', 'ETH', 18, 9_812.4471, 'Ethereum'),
 	T('nep141:base.omft.near', 'ETH', 18, 2_019.004, 'Base'),
 	T('nep141:arb.omft.near', 'ETH', 18, 1_311.82, 'Arbitrum'),
-	T('nep141:eth.bridge.near', 'ETH', 18, 702.551, 'Ethereum'),
-	T('nep141:nbtc.bridge.near', 'BTC', 8, 141.2207, 'Bitcoin'),
+	T('nep141:eth.bridge.near', 'ETH', 18, 702.551, 'Ethereum (Rainbow)'),
+	T('nep141:nbtc.bridge.near', 'BTC', 8, 141.2207, 'Bitcoin (Omni)'),
 	T('nep141:btc.omft.near', 'BTC', 8, 612.2381, 'Bitcoin'),
 	T('nep141:eth-0x2260fac5e5542a773aa44fbcfedf7c193bc2c599.omft.near', 'WBTC', 8, 88.0213, 'Ethereum'),
 	T('nep141:sol.omft.near', 'SOL', 9, 148_220.91, 'Solana'),
@@ -261,6 +261,7 @@ function incidents(nowMs) {
 			id: 7,
 			token_id: red.id,
 			symbol: red.symbol,
+			chain: red.chain,
 			decimals: red.decimals,
 			start_block: blockAt(startMs),
 			red_block: blockAt(redMs),
@@ -279,6 +280,7 @@ function incidents(nowMs) {
 		id: 6,
 		token_id: sol.id,
 		symbol: sol.symbol,
+		chain: sol.chain,
 		decimals: sol.decimals,
 		start_block: blockAt(ss),
 		red_block: blockAt(ss + (K - 1) * INTERVAL_S * 1000),
@@ -296,6 +298,7 @@ function incidents(nowMs) {
 		id: 5,
 		token_id: eth.id,
 		symbol: eth.symbol,
+		chain: eth.chain,
 		decimals: eth.decimals,
 		start_block: blockAt(es),
 		red_block: blockAt(es + 90_000),
@@ -396,7 +399,9 @@ function replay() {
 			held: held.toString(),
 			gap: gap.toString(),
 			label,
-			status: gap >= 0n ? 'green' : negStreak >= K ? 'red' : 'amber'
+			status: gap >= 0n ? 'green' : negStreak >= K ? 'red' : 'amber',
+			owed_query: `query call_function intents.near.mt_batch_supply({"token_ids":["nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near"]}) at block_id ${h}`,
+			held_query: `query call_function eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near.ft_balance_of({"account_id":"intents.near"}) at block_id ${h}`
 		});
 	}
 	const firstNeg = points.find((p) => BigInt(p.gap) < 0n);
@@ -407,15 +412,20 @@ function replay() {
 		generated_at: iso(Date.UTC(2026, 10, 2, 18, 0, 0)),
 		rpc_provider: 'archival-rpc.mainnet.near.org',
 		notes: 'SYNTHETIC DESIGN DATA from dev/mock-api.mjs. Not the real replay.',
+		debounce_k: K,
+		cadence_seconds: INTERVAL_S,
 		tokens: [
 			{
 				id: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near',
 				symbol: 'USDC',
+				chain: 'Ethereum',
 				decimals: dec,
 				points,
 				first_negative_block: firstNeg.block_height,
 				detected_red_block: firstRed.block_height,
-				max_deficit: max.toString()
+				max_deficit: max.toString(),
+				time_to_detect_seconds: (K - 1) * INTERVAL_S,
+				detection_note: 'Synthetic: the debounce fires on the fourth consecutive negative sample.'
 			}
 		]
 	};
@@ -482,7 +492,8 @@ const server = http.createServer((req, res) => {
 		const worst = by.red ? 'red' : by.amber ? 'amber' : by.green ? 'green' : 'unknown';
 		const latest = snapFloor(nowMs);
 		return send(res, 200, {
-			status: worst,
+			status: cfg.stale ? 'unknown' : worst,
+			monitor_stale: cfg.stale,
 			last_block: blockAt(latest),
 			last_block_time: iso(latest),
 			last_checked_at: iso(latest + 3400),
@@ -511,7 +522,7 @@ const server = http.createServer((req, res) => {
 			const from = parseRangeBound(url.searchParams.get('from'), to - 86400_000);
 			const limit = Math.min(10000, Number(url.searchParams.get('limit') ?? 2000) || 2000);
 			const points = tok.id === UNKNOWN_ID ? [] : history(tok, from, to, limit, nowMs);
-			return send(res, 200, { token: { id: tok.id, symbol: tok.symbol, decimals: tok.decimals }, points });
+			return send(res, 200, { token: { id: tok.id, symbol: tok.symbol, chain: tok.chain, decimals: tok.decimals }, points });
 		}
 		const open = incidents(nowMs).find((i) => i.token_id === id && !i.closed_at) ?? null;
 		return send(res, 200, { ...tokenObject(tok, nowMs), open_incident: open });

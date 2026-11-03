@@ -85,7 +85,7 @@
 						<span class="inc-icon"><Icon name="alert" size={16} stroke={2} /></span>
 						<span class="inc-body">
 							<span class="inc-title"
-								>Open incident #{inc.id} · <strong>{inc.symbol}</strong> <ChainChip id={inc.token_id} /> ledger owes
+								>Open incident #{inc.id} · <strong>{inc.symbol}</strong> <ChainChip id={inc.token_id} chain={inc.chain} /> ledger owes
 								<span class="num">{formatAmount(inc.max_deficit, inc.decimals)}</span>
 								{inc.symbol} more than intents.near holds</span
 							>

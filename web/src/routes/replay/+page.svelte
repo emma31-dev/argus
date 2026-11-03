@@ -12,6 +12,7 @@
 	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import ChainChip from '$lib/components/ChainChip.svelte';
+	import CopyButton from '$lib/components/CopyButton.svelte';
 
 	const replay = new Resource<ReplayResponse>((s) => api.replay(s));
 	onMount(() => {
@@ -30,7 +31,13 @@
 		const a = t.points.find((p) => p.block_height === t.first_negative_block);
 		const b = t.points.find((p) => p.block_height === t.detected_red_block);
 		const blocks = t.detected_red_block && t.first_negative_block ? t.detected_red_block - t.first_negative_block : null;
-		const secs = a && b ? (new Date(b.block_time).getTime() - new Date(a.block_time).getTime()) / 1000 : null;
+		// Prefer the backend's figure ((K-1) x cadence on sparse samples); fall back to block times.
+		const secs =
+			t.time_to_detect_seconds != null
+				? t.time_to_detect_seconds
+				: a && b
+					? (new Date(b.block_time).getTime() - new Date(a.block_time).getTime()) / 1000
+					: null;
 		return { blocks, secs };
 	}
 	const EVIDENCE_URL = `${REPO_URL}/tree/main/evidence`;
@@ -100,25 +107,25 @@
 			<section class="tok" aria-labelledby="rt-{t.id}">
 				<div class="tok-head">
 					<h2 id="rt-{t.id}">{t.symbol}</h2>
-					<ChainChip id={t.id} size="md" />
+					<ChainChip id={t.id} chain={t.chain} size="md" />
 					<code class="mono">{t.id}</code>
 				</div>
 
 				<div class="card stats">
 					<div class="st">
 						<p class="k"><i class="sw warn"></i>First negative block</p>
-						<p class="v"><BlockLink height={t.first_negative_block} /></p>
-						<p class="s">ledger owes more than it holds</p>
+						<p class="v">{#if t.first_negative_block}<BlockLink height={t.first_negative_block} />{:else}<span class="muted">None</span>{/if}</p>
+						<p class="s">{t.first_negative_block ? 'ledger owes more than it holds' : 'no sampled block had a negative gap'}</p>
 					</div>
 					<div class="st">
 						<p class="k"><i class="sw bad"></i>Argus turns red</p>
-						<p class="v"><BlockLink height={t.detected_red_block} /></p>
-						<p class="s">after the debounce window</p>
+						<p class="v">{#if t.detected_red_block}<BlockLink height={t.detected_red_block} />{:else}<span class="muted">Never</span>{/if}</p>
+						<p class="s">{t.detected_red_block ? 'after the debounce window' : 'debounce did not fire on these samples'}</p>
 					</div>
 					<div class="st">
 						<p class="k">Time to detect</p>
 						<p class="v num">{d.secs !== null ? formatDuration(d.secs) : '—'}</p>
-						<p class="s">{d.blocks !== null ? `${formatInteger(d.blocks)} blocks after the first negative` : ''}</p>
+						<p class="s">{d.blocks !== null ? `${formatInteger(d.blocks)} blocks after the first negative` : 'not detected'}</p>
 					</div>
 					<div class="st">
 						<p class="k">Max deficit</p>
@@ -126,6 +133,8 @@
 						<p class="s">largest shortfall in the window</p>
 					</div>
 				</div>
+
+				{#if t.detection_note}<p class="dnote">{t.detection_note}</p>{/if}
 
 				<div class="card chart">
 					<div class="ch">
@@ -148,6 +157,7 @@
 									<th scope="col" class="r">Gap</th>
 									<th scope="col">Label</th>
 									<th scope="col">Argus</th>
+									<th scope="col">Queries</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -163,6 +173,11 @@
 										<td class="r"><Amount value={p.gap} decimals={t.decimals} symbol={t.symbol} sign tone /></td>
 										<td class="lbl">{p.label}</td>
 										<td><StatusBadge status={p.status} size="sm" /></td>
+										<td class="q">
+											{#if p.owed_query}<span class="qb">owed<CopyButton value={p.owed_query} label="Copy owed query" /></span>{/if}
+											{#if p.held_query}<span class="qb">held<CopyButton value={p.held_query} label="Copy held query" /></span>{/if}
+											{#if !p.owed_query && !p.held_query}<span class="muted">—</span>{/if}
+										</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -448,6 +463,24 @@
 	}
 	.lbl {
 		color: var(--text-2);
+	}
+	.q {
+		white-space: nowrap;
+	}
+	.qb {
+		display: inline-flex;
+		align-items: center;
+		gap: 0;
+		margin-right: 6px;
+		color: var(--text-3);
+		font-family: var(--font-mono);
+		font-size: 11px;
+	}
+	.dnote {
+		font-size: var(--text-sm);
+		color: var(--text-2);
+		line-height: var(--leading-loose);
+		max-width: 80ch;
 	}
 
 	@media (max-width: 900px) {

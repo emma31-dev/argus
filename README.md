@@ -165,6 +165,10 @@ Built and tested in a sandbox whose network policy blocked every NEAR host, so:
 - **Done and tested:** all Go packages (unit tests plus Postgres and Redis integration tests), the API, the monitor binary end to end against a real Postgres, `make verify`, the dashboard (`pnpm check`, 33 tests, static build) and its rendering against the real API.
 - **Not yet run against mainnet:** capability checks 1 to 6, a live snapshot round, and the October replay. Contract method names and argument shapes were confirmed from the `near/intents` source instead (see [docs/research.md §3](docs/research.md)). Run `make checks` once NEAR RPC is reachable.
 
+This is the real dashboard on the real backend in that sandbox, with every RPC provider blocked. It reports the outage instead of showing numbers:
+
+![Argus against the real backend with RPC blocked](web/docs/screenshots/overview-1440-live-offline.png)
+
 Hosts Argus needs: `free.rpc.fastnear.com`, `rpc.mainnet.fastnear.com`, `rpc.mainnet.near.org`, `archival-rpc.mainnet.near.org`, `mainnet.neardata.xyz`, `1click.chaindefuser.com`, `api.telegram.org`.
 
 ## Setup

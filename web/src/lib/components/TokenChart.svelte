@@ -195,7 +195,7 @@
 	});
 </script>
 
-<div class="chart" class:busy bind:clientWidth={width}>
+<div class="chart" class:busy class:empty={data.length === 0} bind:clientWidth={width}>
 	{#if data.length === 0}
 		<div class="nodata">{busy ? 'Loading…' : 'No snapshots in this range.'}</div>
 	{:else if width > 0}
@@ -308,6 +308,15 @@
 	}
 	.busy {
 		opacity: 0.55;
+	}
+	.chart.empty {
+		min-height: 0;
+	}
+	.chart.empty .nodata {
+		position: static;
+		padding: var(--s-8) 0;
+		border: 1px dashed var(--border);
+		border-radius: var(--r);
 	}
 	svg {
 		display: block;

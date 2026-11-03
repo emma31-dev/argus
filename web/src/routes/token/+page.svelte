@@ -31,6 +31,7 @@
 	import { statusMeta } from '$lib/status';
 	import ChainChip from '$lib/components/ChainChip.svelte';
 	import { chainLabel } from '$lib/chain';
+	import { summarizeReadError } from '$lib/errors';
 
 	type Range = '1h' | '24h' | '7d' | '30d';
 	const RANGES: Record<Range, number> = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 };
@@ -142,13 +143,24 @@
 			{#if token.error && !notFound}
 				<OfflineBanner error={token.error} retry={() => Promise.all([token.load(), history.load()])} hasData={!!t} />
 			{/if}
-			<StaleBanner />
-
 			{#if t?.stale}
 				<Banner tone="warn" icon="clock" title="Latest read failed">
-					Argus could not read this token in the last round{t.last_error ? `: ${t.last_error}` : ''}. The figures below are
-					from the last successful snapshot and the status is unchanged until a read succeeds.
+					{summarizeReadError(t.last_error)}
+					{#if latest}
+						Figures below are from the last successful snapshot (block {formatInteger(latest.block_height)}); the status stays
+						as it was until a read succeeds.
+					{:else}
+						Argus has no successful snapshot of this token yet, so there are no figures to show.
+					{/if}
+					{#if t.last_error}
+						<details class="raw-err">
+							<summary>Raw error</summary>
+							<pre>{t.last_error}</pre>
+						</details>
+					{/if}
 				</Banner>
+			{:else}
+				<StaleBanner />
 			{/if}
 
 			{#if t?.open_incident}
@@ -204,10 +216,12 @@
 					</div>
 				{:else if t && !latest}
 					<div class="stat-empty">
-						<EmptyState icon="clock" title="No successful snapshot yet" compact>
-							Argus has not completed a same-block read for this token yet, or the last read failed. It retries every
+						<Icon name="clock" size={16} />
+						<p>
+							<strong>No successful snapshot yet.</strong>
+							Owed, held and gap appear here after the first same-block read of {t.symbol} succeeds. Argus retries every
 							{formatDuration(monitor.intervalMs / 1000)}.
-						</EmptyState>
+						</p>
 					</div>
 				{:else}
 					{#each Array(3) as _, i (i)}
@@ -253,7 +267,7 @@
 						to={view.to}
 						busy={history.loading}
 					/>
-					<p class="chart-foot">
+					<p class="chart-foot" hidden={history.data.points.length === 0}>
 						{formatInteger(history.data.points.length)} snapshots. Long ranges are downsampled evenly, but every snapshot with a
 						negative gap is kept. Hover or focus the chart and use ← → to inspect points, <kbd>N</kbd> for the next negative one.
 					</p>
@@ -464,6 +478,44 @@
 	}
 	.stat-empty {
 		grid-column: 1 / -1;
+		display: flex;
+		gap: var(--s-3);
+		align-items: flex-start;
+		padding: var(--s-5) var(--s-6);
+		color: var(--text-3);
+		font-size: var(--text-sm);
+	}
+	.stat-empty :global(svg) {
+		flex: none;
+		margin-top: 2px;
+	}
+	.stat-empty strong {
+		color: var(--text);
+		font-weight: 600;
+	}
+	.raw-err {
+		margin-top: var(--s-2);
+	}
+	.raw-err summary {
+		cursor: pointer;
+		width: max-content;
+		font-size: var(--text-xs);
+		font-weight: 500;
+		color: var(--text-2);
+	}
+	.raw-err pre {
+		margin: 6px 0 0;
+		padding: 8px 10px;
+		border-radius: var(--r-sm);
+		background: var(--surface);
+		border: 1px solid var(--warn-border);
+		font-size: 11.5px;
+		line-height: 1.55;
+		color: var(--text-2);
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		max-height: 220px;
+		overflow-y: auto;
 	}
 
 	.chart-card {

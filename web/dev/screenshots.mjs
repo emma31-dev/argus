@@ -40,12 +40,13 @@ const pages = [
 
 fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch();
-const reset = () => fetch(`${MOCK}/__mock?scenario=incident&replay=1&stale=0&down=0`);
+// Mock switches are best-effort, so the script also works against the real backend.
+const reset = () => fetch(`${MOCK}/__mock?scenario=incident&replay=1&stale=0&down=0`).catch(() => {});
 for (const pg of pages) {
 	for (const width of widths) {
 		for (const theme of themes) {
 			await reset();
-			if (pg.mock) await fetch(`${MOCK}/__mock?${pg.mock}`);
+			if (pg.mock) await fetch(`${MOCK}/__mock?${pg.mock}`).catch(() => {});
 			const ctx = await browser.newContext({
 				viewport: { width, height: width < 600 ? 844 : 900 },
 				deviceScaleFactor: 1,

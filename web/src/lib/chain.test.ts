@@ -17,13 +17,13 @@ describe('chainOf', () => {
 		expect(chainOf('nep141:btc.omft.near')).toBe('Bitcoin');
 	});
 	it('maps Rainbow / Omni bridge tokens', () => {
-		expect(chainOf('nep141:eth.bridge.near')).toBe('Ethereum');
-		expect(chainOf('nep141:nbtc.bridge.near')).toBe('Bitcoin');
+		expect(chainOf('nep141:eth.bridge.near')).toBe('Ethereum (Rainbow)');
+		expect(chainOf('nep141:nbtc.bridge.near')).toBe('Bitcoin (Omni)');
 	});
 	it('maps HOT omni nep245 tokens by EVM chain id', () => {
 		expect(chainOf('nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g')).toBe('BNB Chain');
 		expect(chainOf('nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr')).toBe('Polygon');
-		expect(chainOf('nep245:v2_1.omni.hot.tg:999999_x')).toBe('HOT Omni');
+		expect(chainOf('nep245:v2_1.omni.hot.tg:999999_x')).toBe('HOT Omni 999999');
 	});
 	it('prefers the API label', () => {
 		expect(chainLabel('nep141:wrap.near', 'NEAR Protocol')).toBe('NEAR Protocol');

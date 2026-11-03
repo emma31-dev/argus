@@ -103,7 +103,7 @@
 							<td class="w1"><IncidentBadge open={isOpen(i)} /></td>
 							<td>
 								<a class="title" href={href.incident(i.id)}><span class="num muted">#{i.id}</span> {i.symbol}</a>
-								<ChainChip id={i.token_id} />
+								<ChainChip id={i.token_id} chain={i.chain} />
 								<span class="sub mono">{i.token_id}</span>
 							</td>
 							<td>
@@ -130,7 +130,7 @@
 					<li>
 						<a class="icard" class:open={isOpen(i)} href={href.incident(i.id)}>
 							<div class="ih">
-								<span class="title"><span class="num muted">#{i.id}</span> {i.symbol} <ChainChip id={i.token_id} /></span>
+								<span class="title"><span class="num muted">#{i.id}</span> {i.symbol} <ChainChip id={i.token_id} chain={i.chain} /></span>
 								<IncidentBadge open={isOpen(i)} />
 							</div>
 							<dl>

@@ -60,8 +60,7 @@
 
 <div class="proof">
 	<p class="intro">
-		Both sides are read from the same RPC provider at the same block
-		{#if block}(<BlockLink height={block} />){/if}, so deposits and withdrawals in flight can't create a false gap.
+		Both sides are read from the same RPC provider at the same block{#if block}&nbsp;(<BlockLink height={block} />){/if}, so deposits and withdrawals in flight can't create a false gap.
 		Re-run these calls against any NEAR archival or recent-state RPC node to check the numbers yourself.
 	</p>
 

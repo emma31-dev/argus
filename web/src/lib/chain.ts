@@ -47,15 +47,16 @@ export function chainOf(tokenId: string): string {
 	const contract = rest[0] ?? '';
 	if (standard === 'nep245' && contract.endsWith('omni.hot.tg')) {
 		const chainId = (rest[1] ?? '').split('_')[0];
-		return EVM_CHAIN[chainId] ?? 'HOT Omni';
+		return EVM_CHAIN[chainId] ?? `HOT Omni ${chainId}`.trim();
 	}
 	if (contract.endsWith('.omft.near')) {
 		const head = contract.slice(0, -'.omft.near'.length);
 		const prefix = head.split(/[-.]/)[0];
 		return OMFT_PREFIX[prefix] ?? 'Bridged';
 	}
-	if (contract === 'eth.bridge.near' || contract.endsWith('.factory.bridge.near')) return 'Ethereum';
-	if (contract === 'nbtc.bridge.near') return 'Bitcoin';
+	// Same labels as the backend's tokens.ChainOf.
+	if (contract === 'eth.bridge.near' || contract.endsWith('.factory.bridge.near')) return 'Ethereum (Rainbow)';
+	if (contract === 'nbtc.bridge.near') return 'Bitcoin (Omni)';
 	return 'NEAR';
 }
 
