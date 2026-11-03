@@ -13,7 +13,9 @@ const DefaultAccount = "intents.near"
 // (token, amount) pair of every NEP-245/DIP-4 event logged by a successful
 // receipt executed on account (DefaultAccount if empty). Events with no
 // token amounts (account_locked, fee_changed, ...) yield one row without
-// TokenID/Amount. A nil block yields nil. Malformed logs are skipped.
+// TokenID/Amount. LogIndex is the position of the log line in the receipt's
+// outcome and ItemIndex the position of the (token, amount) pair within that
+// event, so two items of one log line that share a token stay distinct. A nil block yields nil. Malformed logs are skipped.
 func Extract(b *Block, account string) []model.IncidentEvent {
 	if b == nil {
 		return nil
@@ -29,7 +31,7 @@ func Extract(b *Block, account string) []model.IncidentEvent {
 			if oc.ExecutorID != account || !oc.Succeeded() {
 				continue
 			}
-			for _, log := range oc.Logs {
+			for li, log := range oc.Logs {
 				ev, ok, err := ParseLog(log)
 				if err != nil || !ok {
 					continue
@@ -41,15 +43,17 @@ func Extract(b *Block, account string) []model.IncidentEvent {
 					Standard:    ev.Standard,
 					Event:       ev.Name,
 					Raw:         ev.Raw,
+					LogIndex:    li,
 				}
 				tas := ev.TokenAmounts()
 				if len(tas) == 0 {
 					out = append(out, base)
 					continue
 				}
-				for _, ta := range tas {
+				for ii, ta := range tas {
 					row := base
 					row.TokenID, row.Amount = ta.TokenID, ta.Amount
+					row.ItemIndex = ii
 					out = append(out, row)
 				}
 			}

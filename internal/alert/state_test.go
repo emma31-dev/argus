@@ -221,8 +221,8 @@ func TestStepErrorKeepsStreak(t *testing.T) {
 	st := model.TokenState{TokenID: tok, Status: model.StatusUnknown}
 	st, _ = Step(st, snap(100, "-1"), cfg)
 	st, _ = Step(st, snap(101, "-1"), cfg)
-	st = StepError(st, errors.New("rpc timeout"), cfg)
-	st = StepError(st, errors.New("rpc timeout"), cfg)
+	st = StepError(st, errors.New("rpc timeout"), cfg, t0)
+	st = StepError(st, errors.New("rpc timeout"), cfg, t0)
 	if st.NegativeStreak != 2 || st.Status != model.StatusAmber || !st.Stale || st.LastError != "rpc timeout" || st.FirstNegativeBlock != 100 {
 		t.Fatalf("error changed streak/status: %+v", st)
 	}
@@ -236,18 +236,18 @@ func TestStepErrorKeepsStreak(t *testing.T) {
 		t.Fatalf("want red at 4th snapshot: %v", trs)
 	}
 	// Errors never change a red status.
-	st = StepError(st, errors.New("x"), cfg)
+	st = StepError(st, errors.New("x"), cfg, t0)
 	if st.Status != model.StatusRed {
 		t.Fatalf("status %s", st.Status)
 	}
 }
 
 func TestStepErrorNeverSeenIsUnknown(t *testing.T) {
-	st := StepError(model.TokenState{}, errors.New("boom"), Config{})
+	st := StepError(model.TokenState{}, errors.New("boom"), Config{}, t0)
 	if st.Status != model.StatusUnknown || !st.Stale {
 		t.Fatalf("%+v", st)
 	}
-	st = StepError(model.TokenState{TokenID: tok, Status: model.StatusUnknown}, errors.New(strings.Repeat("x", 1000)), Config{})
+	st = StepError(model.TokenState{TokenID: tok, Status: model.StatusUnknown}, errors.New(strings.Repeat("x", 1000)), Config{}, t0)
 	if len(st.LastError) > 300 {
 		t.Fatal("error not truncated")
 	}

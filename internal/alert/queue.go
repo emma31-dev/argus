@@ -14,6 +14,10 @@ type Delivery struct {
 	id    uint64 // queue-specific handle (memory queue)
 }
 
+// DeadRequeueMaxAge is how long a dead-lettered alert remains eligible for
+// RequeueDead.
+const DeadRequeueMaxAge = 24 * time.Hour
+
 // DeadAlert is a dead-lettered alert with the reason it gave up.
 type DeadAlert struct {
 	Alert  Alert     `json:"alert"`
@@ -32,6 +36,11 @@ type Queue interface {
 	// Dead moves the delivery to the dead-letter list and removes it from
 	// the in-flight set.
 	Dead(ctx context.Context, d *Delivery, reason string) error
+	// RequeueDead moves up to max dead-lettered alerts that were
+	// dead-lettered less than DeadRequeueMaxAge ago back to the pending
+	// queue, oldest first, and returns how many. Delivery stays
+	// at-least-once; the notifiers de-duplicate.
+	RequeueDead(ctx context.Context, max int) (int, error)
 	// Recover re-queues deliveries left in flight by a previous run and
 	// returns how many.
 	Recover(ctx context.Context) (int, error)
@@ -119,6 +128,32 @@ func (q *MemoryQueue) Recover(_ context.Context) (int, error) {
 	for id, d := range q.inflight {
 		q.pending = append([]*Delivery{d}, q.pending...)
 		delete(q.inflight, id)
+	}
+	return n, nil
+}
+
+// RequeueDead implements Queue.
+func (q *MemoryQueue) RequeueDead(_ context.Context, max int) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	cutoff := time.Now().Add(-DeadRequeueMaxAge)
+	n := 0
+	keep := q.dead[:0:0]
+	for _, d := range q.dead { // oldest first
+		if n < max && !d.At.Before(cutoff) {
+			q.next++
+			q.pending = append(q.pending, &Delivery{Alert: d.Alert, id: q.next})
+			n++
+			continue
+		}
+		keep = append(keep, d)
+	}
+	q.dead = keep
+	if n > 0 {
+		select {
+		case q.notify <- struct{}{}:
+		default:
+		}
 	}
 	return n, nil
 }

@@ -129,3 +129,35 @@ func TestDeltasBigInts(t *testing.T) {
 }
 
 func mustBig(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
+
+// Review finding 3: rows of one log line carry their log and item positions,
+// so identical (receipt, event, token, raw) rows stay distinguishable.
+func TestExtractSetsLogAndItemIndex(t *testing.T) {
+	b := &Block{}
+	b.Block.Header.Height = 7
+	var ro ReceiptOutcome
+	ro.ExecutionOutcome.ID = "r1"
+	diff := `EVENT_JSON:{"standard":"dip4","version":"0.3.0","event":"token_diff","data":[{"account_id":"alice.near","diff":{"nep141:wrap.near":"-100"}},{"account_id":"bob.near","diff":{"nep141:wrap.near":"100"}}]}`
+	mint := `EVENT_JSON:{"standard":"nep245","version":"1.0.0","event":"mt_mint","data":[{"owner_id":"a.near","token_ids":["nep141:x.near"],"amounts":["5"]},{"owner_id":"b.near","token_ids":["nep141:x.near"],"amounts":["5"]}]}`
+	ro.ExecutionOutcome.Outcome = Outcome{ExecutorID: "intents.near", Status: json.RawMessage(`{"SuccessValue":""}`),
+		Logs: []string{"unrelated log", diff, mint, mint}}
+	b.Shards = []Shard{{ReceiptExecutionOutcomes: []ReceiptOutcome{ro}}}
+	got := Extract(b, "")
+	type pos struct {
+		ev   string
+		l, i int
+	}
+	var have []pos
+	for _, r := range got {
+		have = append(have, pos{r.Event, r.LogIndex, r.ItemIndex})
+	}
+	want := []pos{{"token_diff", 1, 0}, {"token_diff", 1, 1}, {"mt_mint", 2, 0}, {"mt_mint", 2, 1}, {"mt_mint", 3, 0}, {"mt_mint", 3, 1}}
+	if len(have) != len(want) {
+		t.Fatalf("rows %+v", have)
+	}
+	for i := range want {
+		if have[i] != want[i] {
+			t.Fatalf("rows %+v, want %+v", have, want)
+		}
+	}
+}

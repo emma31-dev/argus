@@ -89,6 +89,37 @@ func (q *RedisQueue) Dead(ctx context.Context, d *Delivery, reason string) error
 	return err
 }
 
+// RequeueDead implements Queue. The dead list is newest-first (LPUSH), so it
+// is scanned from the tail to requeue the oldest eligible alerts first. Each
+// move is one MULTI/EXEC (LPUSH to the queue, LREM from the dead list), so an
+// alert is never lost between the lists.
+func (q *RedisQueue) RequeueDead(ctx context.Context, max int) (int, error) {
+	items, err := q.rdb.LRange(ctx, q.dead, 0, -1).Result()
+	if err != nil {
+		return 0, err
+	}
+	cutoff := time.Now().Add(-DeadRequeueMaxAge)
+	n := 0
+	for i := len(items) - 1; i >= 0 && n < max; i-- {
+		var d DeadAlert
+		if json.Unmarshal([]byte(items[i]), &d) != nil || d.At.Before(cutoff) {
+			continue
+		}
+		raw, err := encodeAlert(d.Alert)
+		if err != nil {
+			continue
+		}
+		pipe := q.rdb.TxPipeline()
+		pipe.LPush(ctx, q.queue, raw)
+		pipe.LRem(ctx, q.dead, 1, items[i])
+		if _, err := pipe.Exec(ctx); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // Recover implements Queue. It must only be called when no other consumer is
 // running (single dispatcher).
 func (q *RedisQueue) Recover(ctx context.Context) (int, error) {

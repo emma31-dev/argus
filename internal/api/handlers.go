@@ -52,13 +52,14 @@ func (s *Server) tokenViews(ctx context.Context) ([]tokenView, []model.Snapshot,
 		return nil, nil, err
 	}
 	idx := snapshotIndex(snaps)
+	now := s.now()
 	views := make([]tokenView, 0, len(toks))
 	for _, t := range toks {
 		var stp *model.TokenState
 		if st, ok := states[t.TokenID]; ok {
 			stp = &st
 		}
-		views = append(views, buildToken(t, stp, idx[t.TokenID]))
+		views = append(views, buildToken(t, stp, idx[t.TokenID], now, s.cfg.StaleAfter))
 	}
 	sortTokens(views)
 	return views, snaps, nil
@@ -79,6 +80,38 @@ func redactURL(raw string) string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host
+}
+
+// monitorStale reports whether the monitor should be considered stale: no
+// round has completed (haveRound false), the last round finished more than
+// StaleAfter ago, or the newest block time among the latest snapshots is more
+// than StaleAfter old. The last check catches a provider stuck on an old block
+// while rounds keep completing.
+func (s *Server) monitorStale(haveRound bool, round store.Round, snaps []model.Snapshot) bool {
+	if !haveRound {
+		return true
+	}
+	now := s.now()
+	if now.Sub(round.FinishedAt) > s.cfg.StaleAfter {
+		return true
+	}
+	if h, bt := maxBlock(snaps); h > 0 && !bt.IsZero() && now.Sub(bt) > s.cfg.StaleAfter {
+		return true
+	}
+	return false
+}
+
+// monitorStaleNow loads the data monitorStale needs.
+func (s *Server) monitorStaleNow(ctx context.Context) (bool, error) {
+	round, rerr := s.store.LastRound(ctx)
+	if rerr != nil && !isNotFound(rerr) {
+		return false, rerr
+	}
+	snaps, err := s.store.LatestSnapshots(ctx)
+	if err != nil {
+		return false, err
+	}
+	return s.monitorStale(rerr == nil, round, snaps), nil
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -120,16 +153,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	var lastChecked, lastBlockTime *time.Time
 	var lastBlock uint64
-	stale := true
 	if rerr == nil {
 		fin := round.FinishedAt.UTC()
 		lastChecked = &fin
 		lastBlock = round.BlockHeight
-		stale = s.now().Sub(round.FinishedAt) > s.cfg.StaleAfter
 		if h, bt := maxBlock(snaps); h > 0 && !bt.IsZero() {
 			lastBlockTime = &bt
 		}
 	}
+	stale := s.monitorStale(rerr == nil, round, snaps)
 	if stale {
 		// A monitor that has stopped looking must not report "green".
 		overall = model.StatusUnknown
@@ -188,7 +220,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	if st, ok := states[id]; ok {
 		stp = &st
 	}
-	out := tokenDetailView{tokenView: buildToken(tok, stp, snapshotIndex(snaps)[id])}
+	out := tokenDetailView{tokenView: buildToken(tok, stp, snapshotIndex(snaps)[id], s.now(), s.cfg.StaleAfter)}
 	if stp != nil && stp.OpenIncidentID != 0 {
 		inc, err := s.store.GetIncident(ctx, stp.OpenIncidentID)
 		switch {

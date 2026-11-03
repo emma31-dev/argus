@@ -57,27 +57,33 @@ type EngineConfig struct {
 	OnTransition func(Transition)
 }
 
-// Engine wires Step to persistence and the alert queue.
+// ErrBlockNotAdvancing is the read error recorded for a token whose snapshot
+// in a new round is not newer than the last one processed (a provider stuck
+// on an old block).
+var ErrBlockNotAdvancing = errors.New("block not advancing")
+
+// Engine wires Step to persistence and the alert outbox.
 type Engine struct {
-	cfg       EngineConfig
-	states    StateStore
-	incidents IncidentStore
-	queue     Queue
-	tokens    TokenLister // optional
+	cfg    EngineConfig
+	states StateStore
+	runner TxRunner
+	tokens TokenLister // optional
 
 	falseAlarms atomic.Uint64
 }
 
-// NewEngine builds an Engine. tokens may be nil (alerts then carry the token
-// id as symbol and 0 decimals).
-func NewEngine(cfg EngineConfig, states StateStore, incidents IncidentStore, queue Queue, tokens TokenLister) *Engine {
+// NewEngine builds an Engine. states is used for reads and for tokens whose
+// state changes without side effects; runner makes the incident write, the
+// state save and the outbox insert of one token atomic. tokens may be nil
+// (alerts then carry the token id as symbol and 0 decimals).
+func NewEngine(cfg EngineConfig, states StateStore, runner TxRunner, tokens TokenLister) *Engine {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Engine{cfg: cfg, states: states, incidents: incidents, queue: queue, tokens: tokens}
+	return &Engine{cfg: cfg, states: states, runner: runner, tokens: tokens}
 }
 
 // FalseAlarms returns how many amber streaks recovered without going red
@@ -85,13 +91,20 @@ func NewEngine(cfg EngineConfig, states StateStore, incidents IncidentStore, que
 func (e *Engine) FalseAlarms() uint64 { return e.falseAlarms.Load() }
 
 // Process runs one snapshot round: it steps every token's state with its new
-// snapshot (or the read error), opens/updates/closes incidents, enqueues
-// alerts and persists the states.
+// snapshot (or the read error), opens/updates/closes incidents, records
+// alerts in the outbox and persists the states.
 //
-// A token whose incident or queue operation fails keeps its previous state
-// (it is not saved), so the same transition re-fires on the next round;
-// OpenIncident being idempotent makes that safe. Other tokens are unaffected
-// and the errors are joined.
+// Per token, the incident writes, the state save and the outbox insert of its
+// alerts commit in one transaction (TxRunner). If any of them fails nothing
+// is written for that token, it keeps its previous state, and the same
+// transition re-fires on the next round. Other tokens are unaffected and the
+// errors are joined. A Relay moves committed alerts to the Queue.
+//
+// One Process call is one round, and at most one snapshot per token counts
+// (the highest block). A snapshot at or below the token's LastBlock is
+// therefore a new round that did not advance: it is recorded as a failed read
+// (ErrBlockNotAdvancing) instead of being silently ignored, so a provider
+// stuck on an old block makes the token stale.
 func (e *Engine) Process(ctx context.Context, snaps []model.Snapshot, errs map[string]error) error {
 	bySnap := make(map[string]model.Snapshot, len(snaps))
 	for _, s := range snaps {
@@ -121,7 +134,7 @@ func (e *Engine) Process(ctx context.Context, snaps []model.Snapshot, errs map[s
 	now := e.cfg.Now()
 
 	var (
-		toSave []model.TokenState
+		plain  []model.TokenState // no side effects: saved in one batch
 		joined []error
 	)
 	for _, id := range ids {
@@ -131,25 +144,40 @@ func (e *Engine) Process(ctx context.Context, snaps []model.Snapshot, errs map[s
 		}
 		var next model.TokenState
 		var trs []Transition
-		if snap, ok := bySnap[id]; ok {
+		snap, haveSnap := bySnap[id]
+		if haveSnap && p.LastBlock != 0 && snap.BlockHeight <= p.LastBlock {
+			haveSnap = false
+			errs = withErr(errs, id, fmt.Errorf("%w: block %d, last processed %d", ErrBlockNotAdvancing, snap.BlockHeight, p.LastBlock))
+		}
+		if haveSnap {
 			next, trs = Step(p, snap, e.cfg.Alert)
 		} else {
-			next = StepError(p, errs[id], e.cfg.Alert)
+			next = StepError(p, errs[id], e.cfg.Alert, now)
 			next.UpdatedAt = now
 		}
-		next, terr := e.apply(ctx, next, trs, meta, now)
-		if terr != nil {
-			joined = append(joined, fmt.Errorf("%s: %w", id, terr))
+		if len(trs) == 0 {
+			plain = append(plain, next)
 			continue
 		}
-		toSave = append(toSave, next)
+		if terr := e.commit(ctx, next, trs, meta, now); terr != nil {
+			joined = append(joined, fmt.Errorf("%s: %w", id, terr))
+		}
 	}
-	if len(toSave) > 0 {
-		if err := e.states.SaveStates(ctx, toSave); err != nil {
+	if len(plain) > 0 {
+		if err := e.states.SaveStates(ctx, plain); err != nil {
 			joined = append(joined, fmt.Errorf("save states: %w", err))
 		}
 	}
 	return errors.Join(joined...)
+}
+
+func withErr(m map[string]error, id string, err error) map[string]error {
+	out := make(map[string]error, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	out[id] = err
+	return out
 }
 
 func (e *Engine) tokenMeta(ctx context.Context) map[string]model.Token {
@@ -168,9 +196,48 @@ func (e *Engine) tokenMeta(ctx context.Context) map[string]model.Token {
 	return m
 }
 
-// apply performs the side effects of the transitions of one token and
-// returns the state to persist (with OpenIncidentID set/cleared).
-func (e *Engine) apply(ctx context.Context, st model.TokenState, trs []Transition, meta map[string]model.Token, now time.Time) (model.TokenState, error) {
+// commit performs the side effects of one token's transitions and saves its
+// state, atomically. Hooks and counters run only after the commit.
+func (e *Engine) commit(ctx context.Context, st model.TokenState, trs []Transition, meta map[string]model.Token, now time.Time) error {
+	var done []Transition
+	var falseAlarms uint64
+	err := e.runner.InTx(ctx, func(tx Tx) error {
+		done, falseAlarms = done[:0], 0
+		next, alerts, applied, err := e.apply(ctx, tx, st, trs, meta, now)
+		if err != nil {
+			return err
+		}
+		if err := tx.AddOutbox(ctx, alerts); err != nil {
+			return fmt.Errorf("outbox: %w", err)
+		}
+		if err := tx.SaveStates(ctx, []model.TokenState{next}); err != nil {
+			return fmt.Errorf("save state: %w", err)
+		}
+		done = applied
+		for _, t := range applied {
+			if t.Kind == FalseAlarmCleared {
+				falseAlarms++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	e.falseAlarms.Add(falseAlarms)
+	for _, t := range done {
+		e.notifyTransition(t)
+	}
+	return nil
+}
+
+// apply performs the incident writes of the transitions of one token through
+// tx and returns the state to persist (with OpenIncidentID set/cleared), the
+// alerts to record and the transitions as applied (TurnedRed carries its
+// incident id).
+func (e *Engine) apply(ctx context.Context, tx Tx, st model.TokenState, trs []Transition, meta map[string]model.Token, now time.Time) (model.TokenState, []Alert, []Transition, error) {
+	var alerts []Alert
+	applied := make([]Transition, 0, len(trs))
 	for _, t := range trs {
 		log := e.cfg.Logger.With("token", t.TokenID, "kind", string(t.Kind), "block", t.Block)
 		a := e.newAlert(t, meta, now)
@@ -178,27 +245,27 @@ func (e *Engine) apply(ctx context.Context, st model.TokenState, trs []Transitio
 		case TurnedAmber:
 			log.Info("token turned amber", "gap", t.Gap)
 		case FalseAlarmCleared:
-			e.falseAlarms.Add(1)
 			log.Info("false alarm cleared", "streak", t.Streak, "max_deficit", t.MaxDeficit)
 		case TurnedRed:
 			opened := t.BlockTime
 			if opened.IsZero() {
 				opened = now
 			}
-			id, err := e.incidents.OpenIncident(ctx, model.Incident{
+			id, err := tx.OpenIncident(ctx, model.Incident{
 				TokenID: t.TokenID, StartBlock: t.StartBlock, RedBlock: t.RedBlock,
 				OpenedAt: opened, MaxDeficit: t.MaxDeficit, MaxDeficitBlock: t.MaxDeficitBlock,
 			})
 			if err != nil {
-				return st, fmt.Errorf("open incident: %w", err)
+				return st, nil, nil, fmt.Errorf("open incident: %w", err)
 			}
 			st.OpenIncidentID = id
 			a.IncidentID = id
+			t.IncidentID = id
 			log.Warn("token turned red", "incident", id, "gap", t.Gap, "start_block", t.StartBlock)
 		case IncidentUpdate:
 			if t.IncidentID != 0 {
-				if err := e.incidents.UpdateIncident(ctx, t.IncidentID, t.MaxDeficit, t.MaxDeficitBlock); err != nil {
-					return st, fmt.Errorf("update incident: %w", err)
+				if err := tx.UpdateIncident(ctx, t.IncidentID, t.MaxDeficit, t.MaxDeficitBlock); err != nil {
+					return st, nil, nil, fmt.Errorf("update incident: %w", err)
 				}
 			}
 			log.Info("incident deficit grew", "incident", t.IncidentID, "max_deficit", t.MaxDeficit)
@@ -208,26 +275,21 @@ func (e *Engine) apply(ctx context.Context, st model.TokenState, trs []Transitio
 				if closedAt.IsZero() {
 					closedAt = now
 				}
-				if inc, err := e.incidents.GetIncident(ctx, t.IncidentID); err == nil && !inc.OpenedAt.IsZero() {
+				if inc, err := tx.GetIncident(ctx, t.IncidentID); err == nil && !inc.OpenedAt.IsZero() {
 					a.DurationSeconds = int64(closedAt.Sub(inc.OpenedAt).Seconds())
 				}
-				if err := e.incidents.CloseIncident(ctx, t.IncidentID, t.Block, closedAt, t.MaxDeficit, t.MaxDeficitBlock); err != nil {
-					return st, fmt.Errorf("close incident: %w", err)
+				if err := tx.CloseIncident(ctx, t.IncidentID, t.Block, closedAt, t.MaxDeficit, t.MaxDeficitBlock); err != nil {
+					return st, nil, nil, fmt.Errorf("close incident: %w", err)
 				}
 			}
 			log.Info("token recovered", "incident", t.IncidentID, "max_deficit", t.MaxDeficit)
 		}
 		if t.Kind.Alertable() {
-			if err := e.queue.Enqueue(ctx, a); err != nil {
-				return st, fmt.Errorf("enqueue alert: %w", err)
-			}
+			alerts = append(alerts, a)
 		}
-		if t.Kind == TurnedRed {
-			t.IncidentID = st.OpenIncidentID
-		}
-		e.notifyTransition(t)
+		applied = append(applied, t)
 	}
-	return st, nil
+	return st, alerts, applied, nil
 }
 
 func (e *Engine) notifyTransition(t Transition) {

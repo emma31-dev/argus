@@ -70,7 +70,7 @@ func TestMigrateIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != 2 {
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("migrations recorded: %d %v", n, err)
 	}
 	// Concurrent migrators must not fail.
@@ -423,7 +423,7 @@ func TestEngineAgainstPostgres(t *testing.T) {
 	r, ctx := testRepo(t)
 	_ = r.UpsertTokens(ctx, []model.Token{{TokenID: "t", Symbol: "TT", Decimals: 6}})
 	q := alert.NewMemoryQueue()
-	e := alert.NewEngine(alert.EngineConfig{Alert: alert.Config{K: 2}}, r, r, q, r)
+	e := alert.NewEngine(alert.EngineConfig{Alert: alert.Config{K: 2}}, r, r, r)
 	gaps := []int64{5, -3, -4, -9, 2}
 	for i, g := range gaps {
 		b := uint64(100 + i)
@@ -443,6 +443,9 @@ func TestEngineAgainstPostgres(t *testing.T) {
 	st, _ := r.LoadStates(ctx, []string{"t"})
 	if st["t"].Status != model.StatusGreen || st["t"].OpenIncidentID != 0 || st["t"].LastBlock != 104 {
 		t.Fatalf("%+v", st["t"])
+	}
+	if n, err := alert.NewRelay(alert.RelayConfig{}, r, q).Flush(ctx); err != nil || n != 3 {
+		t.Fatalf("relay moved %d: %v", n, err)
 	}
 	var kinds []string
 	for {
@@ -470,5 +473,226 @@ func TestKV(t *testing.T) {
 	}
 	if v, err := r.GetKV(ctx, "k"); err != nil || v != "2" {
 		t.Fatalf("kv = %q %v", v, err)
+	}
+}
+
+// TestInTxRollsBackIncidentStateAndOutbox checks the atomicity the alert
+// engine relies on: a failure after the incident write undoes it, the state
+// and the outbox rows together.
+func TestInTxRollsBackIncidentStateAndOutbox(t *testing.T) {
+	r, ctx := testRepo(t)
+	boom := errors.New("boom")
+	err := r.InTx(ctx, func(tx alert.Tx) error {
+		if _, err := tx.OpenIncident(ctx, model.Incident{TokenID: "t", StartBlock: 1, RedBlock: 2, MaxDeficit: "5", MaxDeficitBlock: 2}); err != nil {
+			return err
+		}
+		if err := tx.SaveStates(ctx, []model.TokenState{{TokenID: "t", Status: model.StatusRed, OpenIncidentID: 1}}); err != nil {
+			return err
+		}
+		if err := tx.AddOutbox(ctx, []alert.Alert{{Kind: alert.TurnedRed, TokenID: "t"}}); err != nil {
+			return err
+		}
+		return boom
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v", err)
+	}
+	incs, _ := r.ListIncidents(ctx, IncidentFilter{})
+	st, _ := r.LoadStates(ctx, nil)
+	pend, _ := r.PendingOutbox(ctx, 10)
+	if len(incs) != 0 || len(st) != 0 || len(pend) != 0 {
+		t.Fatalf("rollback left %d incidents, %d states, %d outbox rows", len(incs), len(st), len(pend))
+	}
+	if err := r.InTx(ctx, func(tx alert.Tx) error {
+		return tx.AddOutbox(ctx, []alert.Alert{{Kind: alert.TurnedRed, TokenID: "t", Gap: "-1", At: base}, {Kind: alert.Recovered, TokenID: "t"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pend, _ = r.PendingOutbox(ctx, 10)
+	if len(pend) != 2 || pend[0].Alert.Kind != alert.TurnedRed || pend[0].Alert.Gap != "-1" || pend[0].ID >= pend[1].ID {
+		t.Fatalf("%+v", pend)
+	}
+	if err := r.MarkOutboxEnqueued(ctx, []int64{pend[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if pend, _ = r.PendingOutbox(ctx, 10); len(pend) != 1 || pend[0].Alert.Kind != alert.Recovered {
+		t.Fatalf("%+v", pend)
+	}
+	if n, err := r.PruneOutbox(ctx, time.Now().Add(time.Hour)); err != nil || n != 1 {
+		t.Fatalf("prune %d %v", n, err)
+	}
+}
+
+// failingOutboxRunner makes the outbox insert fail inside real transactions.
+type failingOutboxRunner struct {
+	*Repo
+	fail bool
+}
+
+func (f *failingOutboxRunner) InTx(ctx context.Context, fn func(alert.Tx) error) error {
+	return f.Repo.InTx(ctx, func(tx alert.Tx) error {
+		return fn(failTx{Tx: tx, fail: f.fail})
+	})
+}
+
+type failTx struct {
+	alert.Tx
+	fail bool
+}
+
+func (f failTx) AddOutbox(ctx context.Context, a []alert.Alert) error {
+	if f.fail {
+		return errors.New("outbox insert failed")
+	}
+	return f.Tx.AddOutbox(ctx, a)
+}
+
+// Regression for review finding 1 on the real store: K=2, gaps -5 -5 with the
+// alert write failing, then +10 must leave no open incident behind.
+func TestEngineOutboxFailureLeavesNoOpenIncident(t *testing.T) {
+	r, ctx := testRepo(t)
+	_ = r.UpsertTokens(ctx, []model.Token{{TokenID: "t", Symbol: "TT", Decimals: 6}})
+	fr := &failingOutboxRunner{Repo: r}
+	e := alert.NewEngine(alert.EngineConfig{Alert: alert.Config{K: 2}}, r, fr, r)
+	step := func(b uint64, gap int64) error {
+		return e.Process(ctx, []model.Snapshot{mkSnap("t", b, big.NewInt(100), big.NewInt(100+gap))}, nil)
+	}
+	if err := step(1, -5); err != nil {
+		t.Fatal(err)
+	}
+	fr.fail = true
+	if err := step(2, -5); err == nil {
+		t.Fatal("want error")
+	}
+	fr.fail = false
+	if err := step(3, 10); err != nil {
+		t.Fatal(err)
+	}
+	open, _ := r.ListIncidents(ctx, IncidentFilter{Status: "open"})
+	if len(open) != 0 {
+		t.Fatalf("open incidents left behind: %+v", open)
+	}
+	if pend, _ := r.PendingOutbox(ctx, 10); len(pend) != 0 {
+		t.Fatalf("outbox: %+v", pend)
+	}
+}
+
+// Regression for review finding 3: two items of one log line on the same
+// token (alice -100 / bob +100) must both be stored, and re-attaching is
+// still a no-op.
+func TestIncidentEventsKeepDistinctItemsOfOneLog(t *testing.T) {
+	r, ctx := testRepo(t)
+	id, err := r.OpenIncident(ctx, model.Incident{TokenID: "t", StartBlock: 1, RedBlock: 2, MaxDeficit: "1", MaxDeficitBlock: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"standard":"dip4","event":"token_diff","data":[{"account_id":"alice.near","diff":{"nep141:wrap.near":"-100"}},{"account_id":"bob.near","diff":{"nep141:wrap.near":"100"}}]}`
+	mint := `{"standard":"nep245","event":"mt_mint","data":[{"owner_id":"a","token_ids":["x"],"amounts":["5"]},{"owner_id":"b","token_ids":["x"],"amounts":["5"]}]}`
+	evs := []model.IncidentEvent{
+		{IncidentID: id, BlockHeight: 10, ReceiptID: "r1", Standard: "dip4", Event: "token_diff", TokenID: "nep141:wrap.near", Amount: "-100", Raw: raw, ItemIndex: 0},
+		{IncidentID: id, BlockHeight: 10, ReceiptID: "r1", Standard: "dip4", Event: "token_diff", TokenID: "nep141:wrap.near", Amount: "100", Raw: raw, ItemIndex: 1},
+		{IncidentID: id, BlockHeight: 10, ReceiptID: "r2", Standard: "nep245", Event: "mt_mint", TokenID: "x", Amount: "5", Raw: mint, ItemIndex: 0},
+		{IncidentID: id, BlockHeight: 10, ReceiptID: "r2", Standard: "nep245", Event: "mt_mint", TokenID: "x", Amount: "5", Raw: mint, ItemIndex: 1},
+		{IncidentID: id, BlockHeight: 10, ReceiptID: "r2", Standard: "nep245", Event: "mt_mint", TokenID: "x", Amount: "5", Raw: mint, LogIndex: 1, ItemIndex: 0},
+	}
+	for i := 0; i < 2; i++ { // second pass: idempotent
+		if err := r.AddIncidentEvents(ctx, evs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := r.IncidentEvents(ctx, id)
+	if err != nil || len(got) != 5 {
+		t.Fatalf("stored %d events (want 5): %v %+v", len(got), err, got)
+	}
+}
+
+// Finding 2: a token with an open incident is never deactivated.
+func TestDeactivateTokensExceptKeepsOpenIncidents(t *testing.T) {
+	r, ctx := testRepo(t)
+	_ = r.UpsertTokens(ctx, []model.Token{{TokenID: "a"}, {TokenID: "b"}, {TokenID: "c"}})
+	id, _ := r.OpenIncident(ctx, model.Incident{TokenID: "b", StartBlock: 1, RedBlock: 2, MaxDeficit: "1", MaxDeficitBlock: 2})
+	_ = r.SaveStates(ctx, []model.TokenState{{TokenID: "b", Status: model.StatusRed, OpenIncidentID: id}})
+	n, err := r.DeactivateTokensExcept(ctx, []string{"a"})
+	if err != nil || n != 1 {
+		t.Fatalf("deactivated %d: %v", n, err)
+	}
+	toks, _ := r.ListTokens(ctx)
+	if len(toks) != 2 || toks[0].TokenID != "a" || toks[1].TokenID != "b" {
+		t.Fatalf("%+v", toks)
+	}
+}
+
+// StaleSince round-trips through token_states.
+func TestStateStaleSinceRoundTrip(t *testing.T) {
+	r, ctx := testRepo(t)
+	since := base.Add(time.Minute)
+	if err := r.SaveStates(ctx, []model.TokenState{{TokenID: "a", Status: model.StatusGreen, Stale: true, StaleSince: since}, {TokenID: "b", Status: model.StatusGreen}}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.LoadStates(ctx, nil)
+	if !got["a"].StaleSince.Equal(since) || !got["b"].StaleSince.IsZero() {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// Review finding 10: a long incident used to return every negative row (~86k
+// points a day). Negative rows are now downsampled too, but the sign
+// transitions and the deepest deficit of each run always survive.
+func TestHistoryDownsamplesLongNegativeRun(t *testing.T) {
+	r, ctx := testRepo(t)
+	_ = r.UpsertTokens(ctx, []model.Token{{TokenID: "t", Symbol: "T"}})
+	// blocks 1..100 healthy; 101..2600 negative (deepest at 1777); 2601..2700 healthy;
+	// 2701..2900 negative (deepest at 2850); 2901..3000 healthy.
+	const limit = 200
+	var snaps []model.Snapshot
+	for b := uint64(1); b <= 3000; b++ {
+		held := int64(100)
+		switch {
+		case b >= 101 && b <= 2600:
+			held = 100 - 1 - int64(b%7)
+			if b == 1777 {
+				held = 100 - 50
+			}
+		case b >= 2701 && b <= 2900:
+			held = 100 - 2
+			if b == 2850 {
+				held = 100 - 30
+			}
+		}
+		snaps = append(snaps, mkSnap("t", b, big.NewInt(100), big.NewInt(held)))
+	}
+	if _, err := r.InsertSnapshots(ctx, snaps); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.History(ctx, "t", Range{}, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) > 2*limit {
+		t.Fatalf("a long negative run was not downsampled: %d rows for limit %d", len(got), limit)
+	}
+	seen := map[uint64]bool{}
+	var prev uint64
+	for _, s := range got {
+		if s.BlockHeight <= prev {
+			t.Fatal("not ordered")
+		}
+		prev = s.BlockHeight
+		seen[s.BlockHeight] = true
+	}
+	must := map[string]uint64{
+		"range start": 1, "range end": 3000,
+		"run 1 first": 101, "run 1 last": 2600, "run 1 max deficit": 1777,
+		"run 2 first": 2701, "run 2 last": 2900, "run 2 max deficit": 2850,
+	}
+	for what, b := range must {
+		if !seen[b] {
+			t.Errorf("%s (block %d) dropped", what, b)
+		}
+	}
+	// Below the limit every negative row is still returned.
+	small, _ := r.History(ctx, "t", Range{FromBlock: 2701, ToBlock: 2900}, limit)
+	if len(small) != 200 {
+		t.Fatalf("short run must be returned in full: %d", len(small))
 	}
 }

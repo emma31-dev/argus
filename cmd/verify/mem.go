@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emma31-dev/argus/internal/alert"
 	"github.com/emma31-dev/argus/internal/fixturegen"
 	"github.com/emma31-dev/argus/internal/model"
 )
@@ -132,3 +133,26 @@ func (s *memIncidents) GetIncident(_ context.Context, id int64) (model.Incident,
 type memTokens []model.Token
 
 func (t memTokens) ListTokens(context.Context) ([]model.Token, error) { return t, nil }
+
+// memOutbox collects the alerts the engine records.
+type memOutbox struct {
+	mu     sync.Mutex
+	alerts []alert.Alert
+}
+
+func (o *memOutbox) AddOutbox(_ context.Context, a []alert.Alert) error {
+	o.mu.Lock()
+	o.alerts = append(o.alerts, a...)
+	o.mu.Unlock()
+	return nil
+}
+
+// memTx bundles the in-memory stores into the alert.Tx / alert.TxRunner the
+// engine needs. Nothing here fails, so InTx has no rollback to perform.
+type memTx struct {
+	*memStates
+	*memIncidents
+	*memOutbox
+}
+
+func (t memTx) InTx(_ context.Context, fn func(alert.Tx) error) error { return fn(t) }

@@ -47,7 +47,9 @@ func (f *fakeNEAR) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h := f.height.Add(1)
 		reply(map[string]any{"header": map[string]any{
 			"height": h, "hash": fmt.Sprintf("SyntheticHash%d", h),
-			"timestamp_nanosec": fmt.Sprint(time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC).Add(time.Duration(h) * time.Second).UnixNano()),
+			// Block time follows the wall clock: /v1/status marks the monitor stale
+			// when the newest block is older than the staleness bound.
+			"timestamp_nanosec": fmt.Sprint(time.Now().UnixNano()),
 		}})
 	case "query":
 		var p struct {
@@ -242,7 +244,11 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("providers = %v", provs)
 	}
 
-	// The red transition produced exactly one alert on the queue, linking the dashboard route.
+	// The red transition produced exactly one alert on the queue (moved there
+	// by the outbox relay), linking the dashboard route.
+	if _, err := app.relay.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if queue.Len() < 1 {
 		t.Fatal("no alert was queued for the red token")
 	}

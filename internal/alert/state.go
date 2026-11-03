@@ -86,13 +86,20 @@ func parseInt(s string) (*big.Int, bool) {
 
 // Step advances one token's state by one successful snapshot. It is pure: no
 // clock, no I/O. Snapshots with a block at or below prev.LastBlock (duplicate
-// or out of order) and snapshots whose gap does not parse are ignored.
+// or out of order) and snapshots whose gap does not parse are ignored here;
+// the Engine, which knows a round's boundaries, turns a snapshot that fails
+// to advance the block in a new round into a failed read (see Engine.Process).
 //
 // Rules (PRD 5.3): gap >= 0 is green. gap < 0 increments the negative streak;
 // the token is amber while streak < K and red once streak >= K or the deficit
 // reaches the absolute threshold. While red, a new maximum deficit yields
 // IncidentUpdate. Recovery from red yields Recovered; recovery from amber
 // yields FalseAlarmCleared.
+//
+// Invariant: whenever a token goes green while prev.OpenIncidentID != 0 the
+// transition is Recovered (which closes that incident), whatever the previous
+// status was. This repairs states in which an incident was left open next to
+// a non-red status.
 func Step(prev model.TokenState, snap model.Snapshot, cfg Config) (model.TokenState, []Transition) {
 	if prev.LastBlock != 0 && snap.BlockHeight <= prev.LastBlock {
 		return prev, nil
@@ -106,7 +113,7 @@ func Step(prev model.TokenState, snap model.Snapshot, cfg Config) (model.TokenSt
 		next.TokenID = snap.TokenID
 	}
 	next.LastBlock = snap.BlockHeight
-	next.Stale, next.LastError = false, ""
+	next.Stale, next.LastError, next.StaleSince = false, "", time.Time{}
 	if !snap.TakenAt.IsZero() {
 		next.UpdatedAt = snap.TakenAt
 	} else {
@@ -126,7 +133,7 @@ func Step(prev model.TokenState, snap model.Snapshot, cfg Config) (model.TokenSt
 		tr.Streak = prev.NegativeStreak
 		var out []Transition
 		switch {
-		case prev.Status == model.StatusRed:
+		case prev.Status == model.StatusRed || prev.OpenIncidentID != 0:
 			tr.Kind = Recovered
 			tr.IncidentID = prev.OpenIncidentID
 			out = append(out, tr)
@@ -200,10 +207,16 @@ func Step(prev model.TokenState, snap model.Snapshot, cfg Config) (model.TokenSt
 
 // StepError records a failed read for a token. It never resets the negative
 // streak and never changes the status of a token that has had a snapshot; it
-// only flags the state as stale. A token that never had a snapshot is unknown.
-func StepError(prev model.TokenState, err error, _ Config) model.TokenState {
+// only flags the state as stale and records, in StaleSince, when reads first
+// failed (kept while the failures continue; a successful Step clears it). A
+// token that never had a snapshot is unknown. now is the time of the failed
+// read.
+func StepError(prev model.TokenState, err error, _ Config, now time.Time) model.TokenState {
 	next := prev
 	next.Stale = true
+	if next.StaleSince.IsZero() {
+		next.StaleSince = now
+	}
 	if err != nil {
 		msg := err.Error()
 		if len(msg) > 300 {

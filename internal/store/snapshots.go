@@ -40,7 +40,7 @@ func (r *Repo) InsertSnapshots(ctx context.Context, snaps []model.Snapshot) (int
 	if b.Len() == 0 {
 		return 0, nil
 	}
-	br := r.pool.SendBatch(ctx, b)
+	br := r.q.SendBatch(ctx, b)
 	inserted := 0
 	var first error
 	for i := 0; i < b.Len(); i++ {
@@ -67,7 +67,7 @@ func (r *Repo) InsertSnapshots(ctx context.Context, snaps []model.Snapshot) (int
 // BY block_height DESC but driven from the tokens table with a LATERAL index
 // probe per token, which stays O(tokens) however large snapshots grows.
 func (r *Repo) LatestSnapshots(ctx context.Context) ([]model.Snapshot, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.q.Query(ctx, `
 		SELECT s.token_id, s.block_height, s.block_hash, s.block_time, s.owed::text, s.held::text, s.gap::text, s.provider, s.taken_at
 		FROM tokens t
 		JOIN LATERAL (
@@ -126,9 +126,15 @@ const (
 
 // History returns a token's snapshots in rg ordered by block height. When the
 // range holds more than limit rows it is downsampled to roughly limit rows by
-// keeping every k-th row (plus the first and last), and ALWAYS keeps every
-// snapshot with gap < 0, so the result can exceed limit when a long deficit
-// exists. limit <= 0 means DefaultHistoryLimit.
+// keeping every k-th row (plus the first and last).
+//
+// Evidence is preserved: while the negative-gap (gap < 0) rows number at most
+// limit, ALL of them are kept, so the result can exceed limit by that much.
+// When negative rows alone exceed limit (a long incident: about 86k rows per
+// day at 1 s blocks), they are downsampled with the rest, but these are still
+// always kept: the first and last row of the range, the first and last row of
+// every negative run (the sign transitions), and the row with the maximum
+// deficit (minimum gap) of every run. limit <= 0 means DefaultHistoryLimit.
 func (r *Repo) History(ctx context.Context, tokenID string, rg Range, limit int) ([]model.Snapshot, error) {
 	if limit <= 0 {
 		limit = DefaultHistoryLimit
@@ -136,15 +142,28 @@ func (r *Repo) History(ctx context.Context, tokenID string, rg Range, limit int)
 	limit = min(limit, MaxHistoryLimit)
 	clauses, args := rg.where("", []string{"token_id = $1"}, []any{tokenID})
 	args = append(args, int64(limit))
+	lp := len(args)
 	q := fmt.Sprintf(`
 		WITH r AS (
-			SELECT *, row_number() OVER (ORDER BY block_height) AS rn, count(*) OVER () AS cnt
-			FROM snapshots WHERE %s
+			SELECT *, (gap < 0) AS neg,
+				row_number() OVER w AS rn, count(*) OVER () AS cnt,
+				lag(gap < 0) OVER w AS pneg, lead(gap < 0) OVER w AS nneg
+			FROM snapshots WHERE %[1]s
+			WINDOW w AS (ORDER BY block_height)
+		), g AS (
+			SELECT r.*, count(*) FILTER (WHERE neg) OVER () AS negcnt,
+				sum(CASE WHEN pneg IS NULL OR pneg <> neg THEN 1 ELSE 0 END) OVER (ORDER BY rn) AS run
+			FROM r
+		), m AS (
+			SELECT g.*, row_number() OVER (PARTITION BY run ORDER BY gap, rn) AS deficit_rank FROM g
 		)
-		SELECT %s FROM r
-		WHERE gap < 0 OR rn = 1 OR rn = cnt OR (rn - 1) %% ((cnt + $%d - 1) / $%d) = 0
-		ORDER BY block_height`, strings.Join(clauses, " AND "), snapCols, len(args), len(args))
-	rows, err := r.pool.Query(ctx, q, args...)
+		SELECT %[2]s FROM m
+		WHERE rn = 1 OR rn = cnt
+		   OR (neg AND negcnt <= $%[3]d)
+		   OR (neg AND (pneg IS DISTINCT FROM TRUE OR nneg IS DISTINCT FROM TRUE OR deficit_rank = 1))
+		   OR (rn - 1) %% ((cnt + $%[3]d - 1) / $%[3]d) = 0
+		ORDER BY block_height`, strings.Join(clauses, " AND "), snapCols, lp)
+	rows, err := r.q.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: history: %w", err)
 	}
@@ -189,7 +208,7 @@ func (r *Repo) ExportRows(ctx context.Context, tokenID string, rg Range, maxRows
 	if maxRows > 0 {
 		q += " LIMIT " + strconv.Itoa(maxRows)
 	}
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.q.Query(ctx, q, args...)
 	if err != nil {
 		return fmt.Errorf("store: export: %w", err)
 	}
@@ -217,7 +236,7 @@ func (r *Repo) ExportRows(ctx context.Context, tokenID string, rg Range, maxRows
 // the number of rows deleted. Run it from a daily job; for very large
 // deployments partition by block_time instead.
 func (r *Repo) PruneSnapshots(ctx context.Context, olderThan time.Time, keepNegative bool) (int64, error) {
-	tag, err := r.pool.Exec(ctx, `
+	tag, err := r.q.Exec(ctx, `
 		DELETE FROM snapshots s
 		WHERE s.taken_at < $1
 		  AND ($2 = FALSE OR s.gap >= 0)
@@ -241,7 +260,7 @@ type Round struct {
 
 // RecordRound stores a completed round.
 func (r *Repo) RecordRound(ctx context.Context, rd Round) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO rounds (block_height, started_at, finished_at, tokens_ok, tokens_failed, provider)
+	_, err := r.q.Exec(ctx, `INSERT INTO rounds (block_height, started_at, finished_at, tokens_ok, tokens_failed, provider)
 		VALUES ($1,$2,$3,$4,$5,$6)`, int64(rd.BlockHeight), rd.StartedAt, rd.FinishedAt, rd.TokensOK, rd.TokensFailed, rd.Provider)
 	if err != nil {
 		return fmt.Errorf("store: record round: %w", err)
@@ -253,7 +272,7 @@ func (r *Repo) RecordRound(ctx context.Context, rd Round) error {
 func (r *Repo) LastRound(ctx context.Context) (Round, error) {
 	var rd Round
 	var h int64
-	err := r.pool.QueryRow(ctx, `SELECT block_height, started_at, finished_at, tokens_ok, tokens_failed, provider
+	err := r.q.QueryRow(ctx, `SELECT block_height, started_at, finished_at, tokens_ok, tokens_failed, provider
 		FROM rounds ORDER BY finished_at DESC, id DESC LIMIT 1`).
 		Scan(&h, &rd.StartedAt, &rd.FinishedAt, &rd.TokensOK, &rd.TokensFailed, &rd.Provider)
 	if err == pgx.ErrNoRows {
@@ -265,7 +284,7 @@ func (r *Repo) LastRound(ctx context.Context) (Round, error) {
 
 // PruneRounds deletes rounds finished before olderThan.
 func (r *Repo) PruneRounds(ctx context.Context, olderThan time.Time) (int64, error) {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM rounds WHERE finished_at < $1`, olderThan)
+	tag, err := r.q.Exec(ctx, `DELETE FROM rounds WHERE finished_at < $1`, olderThan)
 	if err != nil {
 		return 0, fmt.Errorf("store: prune rounds: %w", err)
 	}

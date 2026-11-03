@@ -34,7 +34,15 @@ type TelegramConfig struct {
 type APIError struct {
 	Code        int
 	Description string
-	RetryAfter  int
+	// RetryAfterSeconds is parameters.retry_after of a 429 response (0 if
+	// absent).
+	RetryAfterSeconds int
+}
+
+// RetryAfter implements the retry hint the Dispatcher honours: how long
+// Telegram asked us to wait before the next request.
+func (e *APIError) RetryAfter() time.Duration {
+	return time.Duration(e.RetryAfterSeconds) * time.Second
 }
 
 func (e *APIError) Error() string {
@@ -137,7 +145,7 @@ func (t *Telegram) call(ctx context.Context, method string, payload any, timeout
 		if code == 0 {
 			code = resp.StatusCode
 		}
-		return &APIError{Code: code, Description: r.Description, RetryAfter: r.Parameters.RetryAfter}
+		return &APIError{Code: code, Description: r.Description, RetryAfterSeconds: r.Parameters.RetryAfter}
 	}
 	if out != nil {
 		return json.Unmarshal(r.Result, out)

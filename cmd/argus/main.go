@@ -182,6 +182,12 @@ func runMonitor(ctx context.Context, cfg Config, log *slog.Logger) error {
 
 	app := NewApp(cfg, log, repo, newRPC(cfg), queue)
 
+	// ctx is cancelled by shutdown and by fail(); everything long-running,
+	// including the background event attachments, must use this one so that
+	// WaitEvents cannot hang after a failure.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if cfg.EventsEnabled {
 		app.EnableEvents(ctx, newNeardata(cfg))
 		log.Info("event stream enabled", "neardata", cfg.NeardataURL, "rps", cfg.NeardataRPS)
@@ -194,8 +200,6 @@ func runMonitor(ctx context.Context, cfg Config, log *slog.Logger) error {
 	disp := alert.NewDispatcher(alert.DispatcherConfig{Logger: log}, queue, notifiers...)
 
 	srv := app.APIServer(version)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	var wg sync.WaitGroup
 	var firstErr error
@@ -234,6 +238,7 @@ func runMonitor(ctx context.Context, cfg Config, log *slog.Logger) error {
 	})
 	run("discovery", func() { app.discoveryLoop(ctx) })
 	run("snapshots", func() { app.snapshotLoop(ctx) })
+	run("alert-relay", func() { _ = app.relay.Run(ctx) })
 	run("alerts", func() { _ = disp.Run(ctx) })
 	run("prune", func() { app.prune(ctx); app.pruneLoop(ctx) })
 	if app.follower != nil {

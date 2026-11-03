@@ -55,6 +55,13 @@ func (s *Server) handleBadge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	// One staleness rule for every badge: a monitor that has stopped
+	// looking, or whose newest block is old, must not show a status.
+	stale, err := s.monitorStaleNow(ctx)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
 	if raw == "all" {
 		views, _, err := s.tokenViews(ctx)
 		if err != nil {
@@ -66,7 +73,7 @@ func (s *Server) handleBadge(w http.ResponseWriter, r *http.Request) {
 			counts[v.Status]++
 		}
 		st := worstStatus(counts)
-		if round, err := s.store.LastRound(ctx); err != nil || s.now().Sub(round.FinishedAt) > s.cfg.StaleAfter {
+		if stale {
 			st = model.StatusUnknown
 		}
 		writeBadge(w, http.StatusOK, string(st), badgeColors[string(st)])
@@ -87,11 +94,8 @@ func (s *Server) handleBadge(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	if ts, ok := states[id]; ok && ts.LastBlock > 0 {
-		switch ts.Status {
-		case model.StatusGreen, model.StatusAmber, model.StatusRed:
-			st = ts.Status
-		}
+	if ts, ok := states[id]; ok && !stale {
+		st = effectiveStatus(&ts, ts.LastBlock > 0, s.now(), s.cfg.StaleAfter)
 	}
 	writeBadge(w, http.StatusOK, string(st), badgeColors[string(st)])
 }

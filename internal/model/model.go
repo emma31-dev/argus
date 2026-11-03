@@ -90,6 +90,11 @@ type TokenState struct {
 	// status and streak are deliberately left untouched in that case.
 	Stale     bool   `json:"stale,omitempty"`
 	LastError string `json:"last_error,omitempty"`
+	// StaleSince is when reads of this token started failing (or stopped
+	// advancing); zero while the token reads fine. A successful snapshot
+	// clears it. The API reports a token whose StaleSince is older than the
+	// staleness bound as unknown.
+	StaleSince time.Time `json:"stale_since,omitempty"`
 }
 
 // Incident is a red period for a token.
@@ -120,4 +125,11 @@ type IncidentEvent struct {
 	TokenID     string `json:"token_id,omitempty"`
 	Amount      string `json:"amount,omitempty"`
 	Raw         string `json:"raw"` // the EVENT_JSON payload as logged
+	// LogIndex is the position of the log line within the receipt's execution
+	// outcome and ItemIndex the position of the (token, amount) item within
+	// that event. Together with the receipt id they identify the row, even
+	// when two items of one log share a token (token_diff alice -100 / bob
+	// +100) or an event repeats identical payloads.
+	LogIndex  int `json:"log_index,omitempty"`
+	ItemIndex int `json:"item_index,omitempty"`
 }

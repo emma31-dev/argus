@@ -71,16 +71,30 @@ type rangeAttacher interface {
 // incidentEvents attaches intents.near events to incidents as they open,
 // grow and close. Everything runs in goroutines off the alert path and
 // failures are only logged.
+//
+// Per incident it keeps the highest block REQUESTED (want) and the highest
+// block CONFIRMED attached (last). Ranges are queued per incident and run in
+// order by one worker; last advances only after AttachRange succeeded. When a
+// range fails the rest of that incident's queue is dropped and want falls
+// back to last, so the next transition requests the failed blocks again
+// together with the new ones.
 type incidentEvents struct {
 	ctx      context.Context
 	att      rangeAttacher
 	maxChunk uint64
 	log      *slog.Logger
 
-	mu   sync.Mutex
-	last map[int64]uint64 // highest block already requested per incident
-	wg   sync.WaitGroup
-	sem  chan struct{}
+	mu  sync.Mutex
+	inc map[int64]*incState
+	wg  sync.WaitGroup
+	sem chan struct{}
+}
+
+type incState struct {
+	want, last uint64
+	queue      [][2]uint64 // pending [from, to] ranges
+	running    bool        // a worker owns the queue
+	closing    bool        // recovered: forget the incident once idle
 }
 
 func newIncidentEvents(ctx context.Context, att rangeAttacher, maxChunk int, log *slog.Logger) *incidentEvents {
@@ -88,7 +102,7 @@ func newIncidentEvents(ctx context.Context, att rangeAttacher, maxChunk int, log
 		maxChunk = events.DefaultMaxAttachBlocks
 	}
 	return &incidentEvents{ctx: ctx, att: att, maxChunk: uint64(maxChunk), log: log,
-		last: map[int64]uint64{}, sem: make(chan struct{}, 2)}
+		inc: map[int64]*incState{}, sem: make(chan struct{}, 2)}
 }
 
 // OnTransition is the alert.EngineConfig hook. It never blocks.
@@ -98,18 +112,21 @@ func (a *incidentEvents) OnTransition(t alert.Transition) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	st := a.inc[t.IncidentID]
 	switch t.Kind {
 	case alert.TurnedRed:
 		from := uint64(1)
 		if t.StartBlock > preRollBlocks {
 			from = t.StartBlock - preRollBlocks
 		}
-		a.last[t.IncidentID] = t.Block
-		a.spawn(t.IncidentID, t.TokenID, from, t.Block)
+		if st == nil {
+			st = &incState{want: from - 1, last: from - 1}
+			a.inc[t.IncidentID] = st
+		}
+		a.request(t.IncidentID, st, t.TokenID, max(from, st.want+1), t.Block)
 	case alert.IncidentUpdate, alert.Recovered:
-		last, known := a.last[t.IncidentID]
-		from := last + 1
-		if !known { // e.g. after a restart: start from the pre-roll, bounded
+		var from uint64
+		if st == nil { // e.g. after a restart: start from the pre-roll, bounded
 			from = 1
 			if t.StartBlock > preRollBlocks {
 				from = t.StartBlock - preRollBlocks
@@ -117,42 +134,105 @@ func (a *incidentEvents) OnTransition(t alert.Transition) {
 			if t.Block > a.maxChunk && from < t.Block-a.maxChunk {
 				from = t.Block - a.maxChunk
 			}
+			st = &incState{want: from - 1, last: from - 1}
+			a.inc[t.IncidentID] = st
+		} else {
+			from = st.want + 1
 		}
-		if t.Block >= from {
-			a.last[t.IncidentID] = t.Block
-			a.spawn(t.IncidentID, t.TokenID, from, t.Block)
-		}
+		a.request(t.IncidentID, st, t.TokenID, from, t.Block)
 		if t.Kind == alert.Recovered {
-			delete(a.last, t.IncidentID)
+			st.closing = true
+			if !st.running {
+				delete(a.inc, t.IncidentID)
+			}
 		}
 	}
 }
 
-func (a *incidentEvents) spawn(id int64, token string, from, to uint64) {
+// request queues [from, to] (when non-empty) and starts the incident's
+// worker if none is running. Callers hold a.mu.
+func (a *incidentEvents) request(id int64, st *incState, token string, from, to uint64) {
+	if to < from {
+		return
+	}
+	st.want = to
+	st.queue = append(st.queue, [2]uint64{from, to})
+	if st.running {
+		return
+	}
+	st.running = true
 	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		select {
-		case a.sem <- struct{}{}:
-			defer func() { <-a.sem }()
-		case <-a.ctx.Done():
+	go a.work(id, st, token)
+}
+
+// work drains one incident's queue in order.
+func (a *incidentEvents) work(id int64, st *incState, token string) {
+	defer a.wg.Done()
+	select {
+	case a.sem <- struct{}{}:
+		defer func() { <-a.sem }()
+	case <-a.ctx.Done():
+		a.finish(id, st, false)
+		return
+	}
+	for {
+		a.mu.Lock()
+		if len(st.queue) == 0 {
+			a.finishLocked(id, st)
+			a.mu.Unlock()
 			return
 		}
-		total := 0
-		for start := from; start <= to; {
-			end := min(start+a.maxChunk-1, to)
-			n, err := a.att.AttachRange(a.ctx, id, token, start, end)
-			if err != nil {
-				if a.ctx.Err() == nil {
-					a.log.Warn("attaching incident events failed", "incident", id, "token", token, "from", start, "to", end, "err", err)
-				}
-				return
-			}
-			total += n
-			start = end + 1
+		r := st.queue[0]
+		st.queue = st.queue[1:]
+		a.mu.Unlock()
+		if !a.attach(id, st, token, r[0], r[1]) {
+			a.finish(id, st, true)
+			return
 		}
-		a.log.Info("incident events attached", "incident", id, "token", token, "from", from, "to", to, "events", total)
-	}()
+	}
+}
+
+// attach runs one range in chunks, advancing st.last after each chunk that
+// AttachRange confirmed. It reports whether the whole range succeeded.
+func (a *incidentEvents) attach(id int64, st *incState, token string, from, to uint64) bool {
+	total := 0
+	for start := from; start <= to; {
+		end := min(start+a.maxChunk-1, to)
+		n, err := a.att.AttachRange(a.ctx, id, token, start, end)
+		if err != nil {
+			if a.ctx.Err() == nil {
+				a.log.Warn("attaching incident events failed; will retry from the last confirmed block with the next transition",
+					"incident", id, "token", token, "from", start, "to", end, "err", err)
+			}
+			return false
+		}
+		total += n
+		a.mu.Lock()
+		st.last = max(st.last, end)
+		a.mu.Unlock()
+		start = end + 1
+	}
+	a.log.Info("incident events attached", "incident", id, "token", token, "from", from, "to", to, "events", total)
+	return true
+}
+
+// finish ends a worker; after a failure it drops the queued ranges and rolls
+// want back to the last confirmed block.
+func (a *incidentEvents) finish(id int64, st *incState, failed bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if failed || a.ctx.Err() != nil {
+		st.queue = nil
+		st.want = st.last
+	}
+	a.finishLocked(id, st)
+}
+
+func (a *incidentEvents) finishLocked(id int64, st *incState) {
+	st.running = false
+	if st.closing {
+		delete(a.inc, id)
+	}
 }
 
 // Wait blocks until pending attachments finish (shutdown, tests).

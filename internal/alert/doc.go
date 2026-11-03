@@ -4,8 +4,14 @@
 // retries and dead-lettering, and the Telegram and webhook notifiers.
 //
 // The package depends only on small interfaces (StateStore, IncidentStore,
-// Queue, SubscriptionStore, TokenLister) so it can be tested with fakes and
-// never imports the Postgres store.
+// Outbox, TxRunner, Queue, SubscriptionStore, TokenLister) so it can be tested
+// with fakes (MemStore) and never imports the Postgres store.
+//
+// Atomicity: for every token with a transition, the Engine writes the
+// incident, the new state and the alerts to the Outbox in ONE transaction
+// (TxRunner). A failure rolls all of it back and the transition re-fires on
+// the next round, so incidents and states never diverge. A Relay then moves
+// committed outbox rows to the Queue in order, at-least-once.
 //
 // Queue design: alerts are JSON-encoded onto a Redis LIST. Producers LPUSH to
 // "<prefix>:queue"; the dispatcher atomically moves the oldest item to

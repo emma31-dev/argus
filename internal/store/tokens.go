@@ -43,12 +43,15 @@ func (r *Repo) UpsertTokens(ctx context.Context, tokens []model.Token) error {
 
 // DeactivateTokensExcept marks every active token not in keep as inactive
 // (a token dropped from discovery) and returns how many were changed. Call it
-// only after a complete discovery run.
+// only after a complete discovery run. A token with an open incident
+// (token_states.open_incident_id set) is never deactivated, whatever keep
+// says: its incident must be able to recover and close.
 func (r *Repo) DeactivateTokensExcept(ctx context.Context, keep []string) (int64, error) {
 	if keep == nil {
 		keep = []string{}
 	}
-	tag, err := r.pool.Exec(ctx, `UPDATE tokens SET active = FALSE WHERE active AND id <> ALL($1::text[])`, keep)
+	tag, err := r.q.Exec(ctx, `UPDATE tokens SET active = FALSE WHERE active AND id <> ALL($1::text[])
+		AND NOT EXISTS (SELECT 1 FROM token_states s WHERE s.token_id = tokens.id AND s.open_incident_id <> 0)`, keep)
 	if err != nil {
 		return 0, fmt.Errorf("store: deactivate tokens: %w", err)
 	}
@@ -57,7 +60,7 @@ func (r *Repo) DeactivateTokensExcept(ctx context.Context, keep []string) (int64
 
 // ListTokens returns the active tokens ordered by symbol then id.
 func (r *Repo) ListTokens(ctx context.Context) ([]model.Token, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+tokenCols+` FROM tokens WHERE active ORDER BY symbol, id`)
+	rows, err := r.q.Query(ctx, `SELECT `+tokenCols+` FROM tokens WHERE active ORDER BY symbol, id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list tokens: %w", err)
 	}
@@ -75,7 +78,7 @@ func (r *Repo) ListTokens(ctx context.Context) ([]model.Token, error) {
 
 // GetToken returns one token (active or not) or ErrNotFound.
 func (r *Repo) GetToken(ctx context.Context, id string) (model.Token, error) {
-	t, err := scanToken(r.pool.QueryRow(ctx, `SELECT `+tokenCols+` FROM tokens WHERE id = $1`, id))
+	t, err := scanToken(r.q.QueryRow(ctx, `SELECT `+tokenCols+` FROM tokens WHERE id = $1`, id))
 	if err == pgx.ErrNoRows {
 		return t, ErrNotFound
 	}

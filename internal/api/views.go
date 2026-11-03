@@ -47,18 +47,21 @@ func newPoints(snaps []model.Snapshot) []pointView {
 
 // tokenView is one element of /v1/tokens.
 type tokenView struct {
-	ID             string        `json:"id"`
-	Standard       string        `json:"standard"`
-	Contract       string        `json:"contract"`
-	InnerID        string        `json:"inner_id"`
-	Symbol         string        `json:"symbol"`
-	Chain          string        `json:"chain"`
-	Decimals       int           `json:"decimals"`
-	Status         model.Status  `json:"status"`
-	NegativeStreak int           `json:"negative_streak"`
-	Stale          bool          `json:"stale"`
-	LastError      string        `json:"last_error"`
-	Latest         *snapshotView `json:"latest"`
+	ID             string       `json:"id"`
+	Standard       string       `json:"standard"`
+	Contract       string       `json:"contract"`
+	InnerID        string       `json:"inner_id"`
+	Symbol         string       `json:"symbol"`
+	Chain          string       `json:"chain"`
+	Decimals       int          `json:"decimals"`
+	Status         model.Status `json:"status"`
+	NegativeStreak int          `json:"negative_streak"`
+	Stale          bool         `json:"stale"`
+	// StaleSince is when reads of this token started failing; present only
+	// while the token is stale.
+	StaleSince *time.Time    `json:"stale_since,omitempty"`
+	LastError  string        `json:"last_error"`
+	Latest     *snapshotView `json:"latest"`
 }
 
 // tokenDetailView is /v1/tokens/{id}.
@@ -75,9 +78,38 @@ func chainLabel(t model.Token) string {
 	return tokens.ChainOf(t.TokenID)
 }
 
+// tokenStaleTooLong reports whether the token's reads have been failing (or
+// stuck on one block) for longer than staleAfter.
+func tokenStaleTooLong(st *model.TokenState, now time.Time, staleAfter time.Duration) bool {
+	return st != nil && !st.StaleSince.IsZero() && now.Sub(st.StaleSince) > staleAfter
+}
+
+// effectiveStatus is the status the API reports for a token. hasSnapshot says
+// whether the token has ever been read. A token without state or snapshot is
+// unknown. A green token whose reads have been failing for longer than
+// staleAfter is unknown too: its last "green" is no longer evidence. Amber and
+// red keep their status (a deficit seen earlier is not cancelled by silence;
+// hiding it would make a stuck feed look safer) and carry stale: true.
+func effectiveStatus(st *model.TokenState, hasSnapshot bool, now time.Time, staleAfter time.Duration) model.Status {
+	if st == nil || !hasSnapshot {
+		return model.StatusUnknown
+	}
+	switch st.Status {
+	case model.StatusRed, model.StatusAmber:
+		return st.Status
+	case model.StatusGreen:
+		if tokenStaleTooLong(st, now, staleAfter) {
+			return model.StatusUnknown
+		}
+		return model.StatusGreen
+	}
+	return model.StatusUnknown
+}
+
 // buildToken merges token metadata, alert state and the latest snapshot. A
-// token without state or without a snapshot is "unknown".
-func buildToken(t model.Token, st *model.TokenState, snap *model.Snapshot) tokenView {
+// token without state or without a snapshot is "unknown", and so is a green
+// token that has been stale for longer than staleAfter (see effectiveStatus).
+func buildToken(t model.Token, st *model.TokenState, snap *model.Snapshot, now time.Time, staleAfter time.Duration) tokenView {
 	v := tokenView{
 		ID: t.TokenID, Standard: string(t.Standard), Contract: t.Contract, InnerID: t.InnerID,
 		Symbol: t.Symbol, Chain: chainLabel(t), Decimals: t.Decimals, Status: model.StatusUnknown,
@@ -88,13 +120,12 @@ func buildToken(t model.Token, st *model.TokenState, snap *model.Snapshot) token
 	if st != nil {
 		v.NegativeStreak = st.NegativeStreak
 		v.Stale = st.Stale
-		v.LastError = sanitizeError(st.LastError)
-		if snap != nil {
-			switch st.Status {
-			case model.StatusGreen, model.StatusAmber, model.StatusRed:
-				v.Status = st.Status
-			}
+		if !st.StaleSince.IsZero() {
+			ss := st.StaleSince.UTC()
+			v.StaleSince = &ss
 		}
+		v.LastError = sanitizeError(st.LastError)
+		v.Status = effectiveStatus(st, snap != nil, now, staleAfter)
 	}
 	return v
 }

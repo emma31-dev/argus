@@ -18,7 +18,7 @@ func scanSub(row pgx.Row) (alert.Subscription, error) {
 }
 
 func (r *Repo) querySubs(ctx context.Context, q string, args ...any) ([]alert.Subscription, error) {
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.q.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: subscriptions: %w", err)
 	}
@@ -40,7 +40,7 @@ func (r *Repo) AddSubscription(ctx context.Context, s alert.Subscription) (alert
 	if s.TokenID == "" {
 		s.TokenID = alert.AllTokens
 	}
-	out, err := scanSub(r.pool.QueryRow(ctx, `
+	out, err := scanSub(r.q.QueryRow(ctx, `
 		INSERT INTO subscriptions (channel, target, token_id, secret) VALUES ($1,$2,$3,$4)
 		ON CONFLICT (channel, target, token_id) DO UPDATE SET
 			secret = CASE WHEN EXCLUDED.secret <> '' THEN EXCLUDED.secret ELSE subscriptions.secret END
@@ -58,9 +58,9 @@ func (r *Repo) RemoveSubscription(ctx context.Context, channel, target, tokenID 
 	var tag interface{ RowsAffected() int64 }
 	var err error
 	if tokenID == "" {
-		tag, err = r.pool.Exec(ctx, `DELETE FROM subscriptions WHERE channel = $1 AND target = $2`, channel, target)
+		tag, err = r.q.Exec(ctx, `DELETE FROM subscriptions WHERE channel = $1 AND target = $2`, channel, target)
 	} else {
-		tag, err = r.pool.Exec(ctx, `DELETE FROM subscriptions WHERE channel = $1 AND target = $2 AND token_id = $3`, channel, target, tokenID)
+		tag, err = r.q.Exec(ctx, `DELETE FROM subscriptions WHERE channel = $1 AND target = $2 AND token_id = $3`, channel, target, tokenID)
 	}
 	if err != nil {
 		return false, fmt.Errorf("store: remove subscription: %w", err)

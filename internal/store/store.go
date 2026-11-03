@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/emma31-dev/argus/internal/alert"
@@ -27,9 +28,20 @@ import (
 // ErrNotFound is returned when a requested row does not exist.
 var ErrNotFound = errors.New("store: not found")
 
-// Repo is the Postgres repository.
+// dbtx is the query surface shared by *pgxpool.Pool and pgx.Tx, so every Repo
+// method runs unchanged on the pool or inside a transaction.
+type dbtx interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
+}
+
+// Repo is the Postgres repository. The value returned by New runs on the
+// pool; the one handed to InTx callbacks runs inside a transaction.
 type Repo struct {
 	pool *pgxpool.Pool
+	q    dbtx
 }
 
 var (
@@ -37,10 +49,13 @@ var (
 	_ alert.IncidentStore     = (*Repo)(nil)
 	_ alert.TokenLister       = (*Repo)(nil)
 	_ alert.SubscriptionStore = (*Repo)(nil)
+	_ alert.Tx                = (*Repo)(nil)
+	_ alert.TxRunner          = (*Repo)(nil)
+	_ alert.OutboxStore       = (*Repo)(nil)
 )
 
 // New wraps an existing pool.
-func New(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
+func New(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool, q: pool} }
 
 // Open creates a pool from a connection URL and verifies connectivity.
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
@@ -138,7 +153,7 @@ func (r *Repo) sendBatch(ctx context.Context, b *pgx.Batch) error {
 	if b.Len() == 0 {
 		return nil
 	}
-	br := r.pool.SendBatch(ctx, b)
+	br := r.q.SendBatch(ctx, b)
 	var first error
 	for i := 0; i < b.Len(); i++ {
 		if _, err := br.Exec(); err != nil && first == nil {
@@ -149,4 +164,13 @@ func (r *Repo) sendBatch(ctx context.Context, b *pgx.Batch) error {
 		first = err
 	}
 	return first
+}
+
+// InTx implements alert.TxRunner: fn runs inside one database transaction
+// that commits when fn returns nil and rolls back otherwise. The Tx passed to
+// fn is only valid for the duration of the call.
+func (r *Repo) InTx(ctx context.Context, fn func(alert.Tx) error) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		return fn(&Repo{pool: r.pool, q: tx})
+	})
 }

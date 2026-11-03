@@ -17,12 +17,17 @@ type fakeAttacher struct {
 	mu    sync.Mutex
 	calls [][4]uint64 // incident, from, to, 0
 	err   error
+	// failFirst makes the first failFirst calls fail (when err is nil too).
+	failFirst int
 }
 
 func (f *fakeAttacher) AttachRange(_ context.Context, id int64, _ string, from, to uint64) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, [4]uint64{uint64(id), from, to})
+	if len(f.calls) <= f.failFirst {
+		return 0, errors.New("neardata down")
+	}
 	return 1, f.err
 }
 
@@ -55,8 +60,8 @@ func TestIncidentEventsRanges(t *testing.T) {
 			t.Fatalf("calls = %v, want %v", got, want)
 		}
 	}
-	if len(ie.last) != 0 {
-		t.Fatalf("incident state not released: %v", ie.last)
+	if len(ie.inc) != 0 {
+		t.Fatalf("incident state not released: %v", ie.inc)
 	}
 }
 
@@ -68,6 +73,68 @@ func TestIncidentEventsErrorsAreOnlyLogged(t *testing.T) {
 	if got := fa.sorted(); len(got) != 1 || got[0][1] != 1 || got[0][2] != 20 {
 		t.Fatalf("calls = %v", got)
 	}
+}
+
+// Review finding 8: the attached-up-to block advances only after AttachRange
+// succeeds. A failed range is requested again, together with the new blocks,
+// by the next transition (before, it was skipped forever).
+func TestIncidentEventsFailedRangeIsRetried(t *testing.T) {
+	fa := &fakeAttacher{failFirst: 1}
+	ie := newIncidentEvents(context.Background(), fa, 1000, quietLog)
+	ie.OnTransition(alert.Transition{Kind: alert.TurnedRed, TokenID: "x", IncidentID: 7, StartBlock: 1000, Block: 1040})
+	ie.Wait() // [850,1040] fails
+	ie.OnTransition(alert.Transition{Kind: alert.IncidentUpdate, TokenID: "x", IncidentID: 7, StartBlock: 1000, Block: 1100})
+	ie.Wait()
+	ie.OnTransition(alert.Transition{Kind: alert.Recovered, TokenID: "x", IncidentID: 7, StartBlock: 1000, Block: 1200})
+	ie.Wait()
+	got := fa.sorted()
+	want := [][4]uint64{{7, 850, 1040}, {7, 850, 1100}, {7, 1101, 1200}}
+	if len(got) != len(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("calls = %v, want %v", got, want)
+		}
+	}
+	if len(ie.inc) != 0 {
+		t.Fatalf("state leaked: %v", ie.inc)
+	}
+}
+
+// A failed chunk in the middle of a range keeps the confirmed prefix.
+func TestIncidentEventsPartialRangeKeepsConfirmedChunks(t *testing.T) {
+	fa := &fakeAttacher{failFirst: 0}
+	fa2 := &failSecond{fakeAttacher: fa}
+	ie := newIncidentEvents(context.Background(), fa2, 100, quietLog)
+	ie.OnTransition(alert.Transition{Kind: alert.TurnedRed, TokenID: "x", IncidentID: 1, StartBlock: 1000, Block: 1040}) // [850,949] ok, [950,1040] fails
+	ie.Wait()
+	ie.OnTransition(alert.Transition{Kind: alert.IncidentUpdate, TokenID: "x", IncidentID: 1, StartBlock: 1000, Block: 1050})
+	ie.Wait()
+	got := fa.sorted()
+	want := [][4]uint64{{1, 850, 949}, {1, 950, 1040}, {1, 950, 1049}, {1, 1050, 1050}}
+	if len(got) != len(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("calls = %v, want %v", got, want)
+		}
+	}
+}
+
+// failSecond fails the second AttachRange call only.
+type failSecond struct{ *fakeAttacher }
+
+func (f *failSecond) AttachRange(ctx context.Context, id int64, tok string, from, to uint64) (int, error) {
+	n, err := f.fakeAttacher.AttachRange(ctx, id, tok, from, to)
+	f.mu.Lock()
+	calls := len(f.calls)
+	f.mu.Unlock()
+	if calls == 2 {
+		return 0, errors.New("neardata hiccup")
+	}
+	return n, err
 }
 
 func TestIncidentEventsUnknownIncidentAfterRestart(t *testing.T) {

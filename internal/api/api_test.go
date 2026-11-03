@@ -826,3 +826,173 @@ func TestRequestLogging(t *testing.T) {
 		}
 	}
 }
+
+// Review finding 9: a panic after the response started (mid-CSV) must abort
+// the connection, not append a JSON 500 to the half-written body.
+func TestPanicAfterResponseStartedAbortsConnection(t *testing.T) {
+	s := New(Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, newFake(), nil)
+	h := s.recoverPanics(s.logRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/csv")
+		_, _ = io.WriteString(w, "token_id,gap\na,1\n")
+		w.(http.Flusher).Flush()
+		panic("boom mid-stream")
+	})))
+	// Direct call: the abort sentinel must propagate and nothing must be appended.
+	rec := httptest.NewRecorder()
+	func() {
+		defer func() {
+			if r := recover(); r != http.ErrAbortHandler {
+				t.Fatalf("recovered %v, want http.ErrAbortHandler", r)
+			}
+		}()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	}()
+	if body := rec.Body.String(); body != "token_id,gap\na,1\n" || rec.Code != 200 {
+		t.Fatalf("body was modified after the panic: %d %q", rec.Code, body)
+	}
+
+	// Over a real connection the client sees a truncated, not a "complete", body.
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, rerr := io.ReadAll(resp.Body)
+	if rerr == nil {
+		t.Fatalf("response looked complete: %q", b)
+	}
+	if strings.Contains(string(b), "internal error") {
+		t.Fatalf("JSON error appended to the stream: %q", b)
+	}
+
+	// Before any byte is written the 500 is still answered.
+	h2 := s.recoverPanics(s.logRequests(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("early") })))
+	rec = httptest.NewRecorder()
+	h2.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != 500 || !strings.Contains(rec.Body.String(), "internal error") {
+		t.Fatalf("early panic: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Review finding 5a: rounds keep completing but the provider is stuck on an
+// old block; the newest block time is older than the staleness bound.
+func TestStatusMonitorStaleWhenBlockIsOld(t *testing.T) {
+	f := newFake()
+	now := t0.Add(10 * time.Minute) // a round just finished, but block 105 is from t0+105s
+	srv := newServer(t, f, func(c *Config) { c.Now = func() time.Time { return now } })
+	f.round.FinishedAt = now.Add(-time.Second)
+	var got map[string]any
+	getJSON(t, srv.URL+"/v1/status", 200, &got)
+	if got["monitor_stale"] != true || got["status"] != "unknown" {
+		t.Fatalf("stuck block must make the monitor stale: %v", got)
+	}
+	_, b := get(t, srv.URL+"/v1/badge/all.svg")
+	if !strings.Contains(string(b), ">unknown<") {
+		t.Fatalf("all badge = %s", b)
+	}
+	// Fresh block: not stale.
+	f2 := newFake()
+	srv2 := newServer(t, f2, func(c *Config) { c.Now = func() time.Time { return t0.Add(2 * time.Minute) } })
+	f2.round.FinishedAt = t0.Add(2*time.Minute - time.Second)
+	getJSON(t, srv2.URL+"/v1/status", 200, &got)
+	if got["monitor_stale"] != false {
+		t.Fatalf("fresh monitor reported stale: %v", got)
+	}
+}
+
+// Review finding 5b/6: a green token whose reads failed for longer than the
+// bound is reported unknown (with stale_since) and drags the overall status.
+func TestTokenStaleSinceReportsUnknown(t *testing.T) {
+	f := newFake()
+	now := t0.Add(2 * time.Minute) // staleAfter = max(5*30s, 2m) = 2m
+	f.round.FinishedAt = now.Add(-time.Second)
+	long := now.Add(-3 * time.Minute)
+	short := now.Add(-30 * time.Second)
+	f.states[idWrap] = model.TokenState{TokenID: idWrap, Status: model.StatusGreen, LastBlock: 105, Stale: true, StaleSince: long, LastError: "block not advancing"}
+	f.states[idUSDC] = model.TokenState{TokenID: idUSDC, Status: model.StatusAmber, NegativeStreak: 1, LastBlock: 105, Stale: true, StaleSince: long}
+	f.states[idHot] = model.TokenState{TokenID: idHot, Status: model.StatusGreen, LastBlock: 105, Stale: true, StaleSince: short}
+	f.tokens = f.tokens[:3]
+	srv := newServer(t, f, func(c *Config) { c.Now = func() time.Time { return now } })
+
+	var tl struct {
+		Tokens []struct {
+			ID         string `json:"id"`
+			Status     string `json:"status"`
+			Stale      bool   `json:"stale"`
+			StaleSince string `json:"stale_since"`
+		} `json:"tokens"`
+	}
+	getJSON(t, srv.URL+"/v1/tokens", 200, &tl)
+	by := map[string]string{}
+	since := map[string]string{}
+	for _, tk := range tl.Tokens {
+		by[tk.ID], since[tk.ID] = tk.Status, tk.StaleSince
+		if !tk.Stale && since[tk.ID] != "" {
+			t.Fatalf("%+v", tk)
+		}
+	}
+	if by[idWrap] != "unknown" || since[idWrap] != long.Format(time.RFC3339) {
+		t.Fatalf("long-stale green token: %q since %q", by[idWrap], since[idWrap])
+	}
+	if by[idHot] != "green" || since[idHot] == "" {
+		t.Fatalf("briefly stale token must stay green but expose stale_since: %q %q", by[idHot], since[idHot])
+	}
+	if by[idUSDC] != "amber" {
+		t.Fatalf("a stale deficit must not be hidden: %q", by[idUSDC])
+	}
+
+	// Single token endpoint, per-token badge and the overall counts agree.
+	var one struct {
+		Status     string `json:"status"`
+		StaleSince string `json:"stale_since"`
+	}
+	getJSON(t, srv.URL+"/v1/tokens/"+url.PathEscape(idWrap), 200, &one)
+	if one.Status != "unknown" || one.StaleSince == "" {
+		t.Fatalf("%+v", one)
+	}
+	_, b := get(t, srv.URL+"/v1/badge/"+url.PathEscape(idWrap)+".svg")
+	if !strings.Contains(string(b), ">unknown<") {
+		t.Fatalf("badge %s", b)
+	}
+	var st struct {
+		ByStatus map[string]int `json:"tokens_by_status"`
+	}
+	getJSON(t, srv.URL+"/v1/status", 200, &st)
+	if st.ByStatus["unknown"] != 1 || st.ByStatus["green"] != 1 || st.ByStatus["amber"] != 1 {
+		t.Fatalf("by status %v", st.ByStatus)
+	}
+
+	// Only green tokens: the overall status becomes unknown.
+	f.states[idUSDC] = model.TokenState{TokenID: idUSDC, Status: model.StatusGreen, LastBlock: 105}
+	f.states[idHot] = model.TokenState{TokenID: idHot, Status: model.StatusGreen, LastBlock: 105}
+	var all map[string]any
+	getJSON(t, srv.URL+"/v1/status", 200, &all)
+	if all["status"] != "unknown" {
+		t.Fatalf("overall = %v", all["status"])
+	}
+	_, b = get(t, srv.URL+"/v1/badge/all.svg")
+	if !strings.Contains(string(b), ">unknown<") {
+		t.Fatalf("all badge %s", b)
+	}
+}
+
+// Review finding 7: the per-token badge follows the same monitor-staleness
+// rule as all.svg.
+func TestTokenBadgeUnknownWhenMonitorStale(t *testing.T) {
+	f := newFake()
+	f.round.FinishedAt = t0.Add(-time.Hour)
+	srv := newServer(t, f)
+	for _, id := range []string{idWrap, idHot, idUSDC} {
+		_, b := get(t, srv.URL+"/v1/badge/"+url.PathEscape(id)+".svg")
+		if !strings.Contains(string(b), ">unknown<") {
+			t.Fatalf("%s badge on a stale monitor = %s", id, b)
+		}
+	}
+	f.round = nil
+	_, b := get(t, srv.URL+"/v1/badge/"+url.PathEscape(idWrap)+".svg")
+	if !strings.Contains(string(b), ">unknown<") {
+		t.Fatalf("no round yet: %s", b)
+	}
+}

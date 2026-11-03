@@ -22,6 +22,21 @@ const (
 	SourceConfig      = "config"
 )
 
+// SourceRank orders the discovery sources by completeness: enumeration (the
+// contract's own list) is the most complete, then the 1Click list, then the
+// committed config. Unknown names rank 0.
+func SourceRank(source string) int {
+	switch source {
+	case SourceEnumeration:
+		return 3
+	case SourceOneClick:
+		return 2
+	case SourceConfig:
+		return 1
+	}
+	return 0
+}
+
 // Source is one way of finding the token list.
 type Source interface {
 	// Name is the value stored in model.Token.Source.

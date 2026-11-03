@@ -95,10 +95,10 @@ func replayFixture(ctx context.Context, dir string) (*Outcome, error) {
 		rpc.WithSleep(func(context.Context, time.Duration) error { return nil }))
 	reader := &snapshot.Reader{Caller: client, IntentsAccount: fx.IntentsAccount, Now: func() time.Time { return time.Unix(0, 0) }}
 
-	states, incidents, queue := newMemStates(), newMemIncidents(), alert.NewMemoryQueue()
+	states, incidents, outbox := newMemStates(), newMemIncidents(), &memOutbox{}
 	engine := alert.NewEngine(alert.EngineConfig{
 		Alert: alert.Config{K: fx.K}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}, states, incidents, queue, memTokens(toks))
+	}, states, memTx{states, incidents, outbox}, memTokens(toks))
 
 	out := &Outcome{Dir: dir, Fixture: fx, Exchanges: rp.Exchanges()}
 	var last snapshot.Result
@@ -139,12 +139,8 @@ func replayFixture(ctx context.Context, dir string) (*Outcome, error) {
 	}
 	sort.SliceStable(out.Rows, func(i, j int) bool { return rank(out.Rows[i].Status) < rank(out.Rows[j].Status) })
 	out.Computed.Transitions = append(out.Computed.Transitions, states.transitions...)
-	for {
-		d, err := queue.Dequeue(ctx, time.Millisecond)
-		if err != nil || d == nil {
-			break
-		}
-		out.Computed.Alerts = append(out.Computed.Alerts, fixturegen.AlertRec{Kind: string(d.Alert.Kind), Token: d.Alert.TokenID, Block: d.Alert.Block})
+	for _, a := range outbox.alerts {
+		out.Computed.Alerts = append(out.Computed.Alerts, fixturegen.AlertRec{Kind: string(a.Kind), Token: a.TokenID, Block: a.Block})
 	}
 	fixturegen.SortExpected(&out.Computed)
 	return out, nil

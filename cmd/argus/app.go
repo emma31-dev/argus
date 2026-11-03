@@ -32,9 +32,14 @@ type App struct {
 	reader *snapshot.Reader
 	disc   tokens.Discoverer
 	engine *alert.Engine
+	relay  *alert.Relay
 
 	mu   sync.RWMutex
 	toks []model.Token
+	// bestRank is the tokens.SourceRank of the last discovery that was not a
+	// downgrade (0 until one succeeded). A later pass that only reaches a
+	// lower-ranked source is treated as degraded, not as the new truth.
+	bestRank int
 
 	// P1 event stream (off unless ARGUS_EVENTS_ENABLED); set by EnableEvents.
 	incEvents atomic.Pointer[incidentEvents]
@@ -42,6 +47,9 @@ type App struct {
 
 	// backoff bounds, overridable in tests
 	minBackoff, maxBackoff time.Duration
+	// degradedBackoff is the first retry delay after a degraded discovery
+	// (it doubles up to DiscoveryInterval).
+	degradedBackoff time.Duration
 }
 
 // errNoTokens means a round was skipped because discovery has not produced
@@ -59,6 +67,7 @@ func NewApp(cfg Config, log *slog.Logger, repo *store.Repo, client *rpc.Client, 
 		},
 		disc:       buildDiscoverer(cfg, client),
 		minBackoff: 5 * time.Second, maxBackoff: 5 * time.Minute,
+		degradedBackoff: 5 * time.Minute,
 	}
 	a.engine = alert.NewEngine(alert.EngineConfig{
 		Alert:        cfg.alertConfig(),
@@ -70,7 +79,8 @@ func NewApp(cfg Config, log *slog.Logger, repo *store.Repo, client *rpc.Client, 
 				ie.OnTransition(t)
 			}
 		},
-	}, repo, repo, queue, repo)
+	}, repo, repo, repo)
+	a.relay = alert.NewRelay(alert.RelayConfig{Logger: log}, repo, queue)
 	return a
 }
 
@@ -119,14 +129,74 @@ func (a *App) setTokens(ts []model.Token) {
 }
 
 // Discover runs one discovery pass and persists the result. On failure the
-// previous token list stays in place.
+// previous token list stays in place. A pass that only reached a lower-ranked
+// source than the last good one (for example 1Click after a transient
+// mt_tokens error) is not applied as a replacement: see discover.
 func (a *App) Discover(ctx context.Context) error {
+	_, err := a.discover(ctx)
+	return err
+}
+
+// withActive returns ts plus every stored active token that is not in ts, so
+// a partial or downgraded list never drops a token that is still monitored.
+func (a *App) withActive(ctx context.Context, ts []model.Token) []model.Token {
+	stored, err := a.repo.ListTokens(ctx)
+	if err != nil {
+		stored = a.Tokens()
+	}
+	have := make(map[string]bool, len(ts))
+	for _, t := range ts {
+		have[t.TokenID] = true
+	}
+	out := append([]model.Token(nil), ts...)
+	for _, t := range stored {
+		if !have[t.TokenID] {
+			t.Chain = tokens.ChainOf(t.TokenID)
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// discover is Discover that also reports a degraded pass. When the winning
+// source ranks below the last good one the new list is united with the
+// currently active tokens, nothing is deactivated, and degraded is true so
+// the loop retries soon instead of waiting a full interval.
+func (a *App) discover(ctx context.Context) (degraded bool, err error) {
 	ts, source, err := discoverScoped(ctx, a.disc)
 	if err != nil {
-		return err
+		return false, err
+	}
+	rank := tokens.SourceRank(source)
+	a.mu.RLock()
+	best := a.bestRank
+	a.mu.RUnlock()
+	if rank < best {
+		// Persist only tokens we do not already track, so the stored rows
+		// keep the source (and metadata) of the preferred discovery.
+		var fresh []model.Token
+		known := map[string]bool{}
+		if stored, err := a.repo.ListTokens(ctx); err == nil {
+			for _, t := range stored {
+				known[t.TokenID] = true
+			}
+		}
+		for _, t := range ts {
+			if !known[t.TokenID] {
+				fresh = append(fresh, t)
+			}
+		}
+		if err := a.repo.UpsertTokens(ctx, fresh); err != nil {
+			return false, fmt.Errorf("upsert tokens: %w", err)
+		}
+		union := a.withActive(ctx, ts)
+		a.setTokens(union)
+		a.log.Warn("token discovery degraded: only a lower-ranked source answered; keeping the active tokens and not deactivating anything",
+			"source", source, "preferred_rank", best, "source_rank", rank, "from_source", len(ts), "tokens", len(union))
+		return true, nil
 	}
 	if err := a.repo.UpsertTokens(ctx, ts); err != nil {
-		return fmt.Errorf("upsert tokens: %w", err)
+		return false, fmt.Errorf("upsert tokens: %w", err)
 	}
 	ids := make([]string, len(ts))
 	for i, t := range ts {
@@ -134,25 +204,47 @@ func (a *App) Discover(ctx context.Context) error {
 	}
 	removed, err := a.repo.DeactivateTokensExcept(ctx, ids)
 	if err != nil {
-		return fmt.Errorf("deactivate tokens: %w", err)
+		return false, fmt.Errorf("deactivate tokens: %w", err)
 	}
-	a.setTokens(ts)
-	a.log.Info("token discovery complete", "tokens", len(ts), "source", source, "deactivated", removed)
-	return nil
+	a.mu.Lock()
+	a.bestRank = rank
+	a.mu.Unlock()
+	// Tokens with an open incident stay active even when discovery dropped them.
+	all := a.withActive(ctx, ts)
+	a.setTokens(all)
+	a.log.Info("token discovery complete", "tokens", len(all), "source", source, "deactivated", removed)
+	return false, nil
+}
+
+// storedRank is the best source rank among the stored active tokens, used to
+// seed bestRank after a restart.
+func storedRank(stored []model.Token) int {
+	r := 0
+	for _, t := range stored {
+		r = max(r, tokens.SourceRank(t.Source))
+	}
+	return r
 }
 
 // discoveryLoop discovers at start and then every DiscoveryInterval. A
-// failing pass keeps the previous list and retries with exponential backoff.
+// failing pass keeps the previous list and retries with exponential backoff;
+// so does a degraded pass (lower-ranked source), starting at degradedBackoff
+// and capped at the discovery interval, until the preferred source answers.
 func (a *App) discoveryLoop(ctx context.Context) {
 	// A restart with failing discovery can still use the stored list.
 	if stored, err := a.repo.ListTokens(ctx); err == nil && len(stored) > 0 {
 		a.setTokens(stored)
+		a.mu.Lock()
+		a.bestRank = max(a.bestRank, storedRank(stored))
+		a.mu.Unlock()
 		a.log.Info("loaded stored token list", "tokens", len(stored))
 	}
-	failures := 0
+	failures, degradedRuns := 0, 0
 	for ctx.Err() == nil {
 		wait := a.cfg.DiscoveryInterval
-		if err := a.Discover(ctx); err != nil {
+		degraded, err := a.discover(ctx)
+		switch {
+		case err != nil:
 			if ctx.Err() != nil {
 				return
 			}
@@ -160,8 +252,13 @@ func (a *App) discoveryLoop(ctx context.Context) {
 			wait = min(a.minBackoff<<min(failures-1, 10), a.maxBackoff, a.cfg.DiscoveryInterval)
 			a.log.Error("token discovery failed; keeping the previous list", "err", err,
 				"tokens_kept", len(a.Tokens()), "retry_in", wait.String())
-		} else {
+		case degraded:
 			failures = 0
+			wait = min(a.degradedBackoff<<min(degradedRuns, 10), a.cfg.DiscoveryInterval)
+			degradedRuns++
+			a.log.Warn("token discovery degraded; retrying for the preferred source", "retry_in", wait.String())
+		default:
+			failures, degradedRuns = 0, 0
 		}
 		if !sleep(ctx, wait) {
 			return
@@ -223,6 +320,7 @@ func (a *App) RunRound(ctx context.Context) error {
 	if err := a.engine.Process(ctx, res.Snapshots, errs); err != nil {
 		a.log.Error("alert processing reported errors", "err", err)
 	}
+	a.relay.Wake()
 	a.log.Info("snapshot round complete", "block", res.Block.Height, "provider", res.Provider,
 		"tokens_ok", len(res.Snapshots), "tokens_failed", len(res.Errors), "duration_ms", time.Since(started).Milliseconds())
 	return nil
@@ -236,6 +334,7 @@ func (a *App) markAllStale(ctx context.Context, toks []model.Token, cause error)
 	if err := a.engine.Process(ctx, nil, errs); err != nil {
 		a.log.Error("marking tokens stale failed", "err", err)
 	}
+	a.relay.Wake()
 }
 
 // snapshotLoop runs a round every Interval until ctx ends. Rounds never

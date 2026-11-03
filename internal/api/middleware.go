@@ -44,21 +44,27 @@ func (w *statusWriter) Flush() {
 
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// recoverPanics turns a handler panic into a 500, unless the response has
+// already started. It wraps the writer itself so it knows, whatever the inner
+// middleware do: once headers or body bytes are out, a JSON error would be
+// appended to a half-written body (a corrupt CSV that looks complete), so the
+// connection is aborted instead and the client sees a truncated response.
 func (s *Server) recoverPanics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
 		defer func() {
 			if rec := recover(); rec != nil {
 				if rec == http.ErrAbortHandler {
 					panic(rec)
 				}
-				s.log.Error("api: panic in handler", "path", r.URL.Path, "panic", rec)
-				if sw, ok := w.(*statusWriter); ok && sw.status != 0 {
-					return // headers already sent
+				s.log.Error("api: panic in handler", "path", r.URL.Path, "panic", rec, "response_started", sw.status != 0)
+				if sw.status != 0 {
+					panic(http.ErrAbortHandler)
 				}
-				writeError(w, http.StatusInternalServerError, "internal error")
+				writeError(sw, http.StatusInternalServerError, "internal error")
 			}
 		}()
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(sw, r)
 	})
 }
 

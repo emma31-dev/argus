@@ -67,8 +67,8 @@ func (b *Bot) Run(ctx context.Context) error {
 			failures++
 			wait := min(time.Second<<min(failures, 6), time.Minute)
 			var apiErr *APIError
-			if errors.As(err, &apiErr) && apiErr.RetryAfter > 0 {
-				wait = time.Duration(apiErr.RetryAfter) * time.Second
+			if errors.As(err, &apiErr) && apiErr.RetryAfter() > 0 {
+				wait = apiErr.RetryAfter()
 			}
 			b.log.Warn("telegram bot: getUpdates failed", "err", err, "retry_in", wait)
 			_ = sleepCtx(ctx, wait)

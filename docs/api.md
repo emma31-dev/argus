@@ -29,7 +29,7 @@ Overall monitor health plus a summary.
 }
 ```
 
-`status` is the riskiest token status. A monitor that has stopped looking must not report green, so when the last completed round is older than `max(5 x interval, 2 min)` (or there has been none) `monitor_stale` is `true` and `status` is `unknown`. Provider `url` shows scheme and host only (provider URLs may embed API keys) and `last_error` has URLs reduced the same way.
+`status` is the riskiest token status. A monitor that has stopped looking must not report green, so `monitor_stale` is `true` and `status` is `unknown` when there has been no completed round, when the last completed round is older than `max(5 x interval, 2 min)` ("staleAfter"), or when the newest block time among the latest snapshots is older than staleAfter (rounds keep completing, but the provider is stuck on an old block). Provider `url` shows scheme and host only (provider URLs may embed API keys) and `last_error` has URLs reduced the same way.
 
 ## `GET /v1/tokens`
 
@@ -50,6 +50,7 @@ Every tracked token with its latest snapshot, sorted by deficit risk: `red`, the
       "status": "green",
       "negative_streak": 0,
       "stale": false,                // the most recent read of this token failed
+      "stale_since": "2026-11-03T12:00:00Z", // only while stale: when reads started failing
       "last_error": "",              // reason when stale (URLs reduced to scheme + host)
       "latest": {
         "block_height": 171234567,
@@ -65,7 +66,7 @@ Every tracked token with its latest snapshot, sorted by deficit risk: `red`, the
 }
 ```
 
-`latest` is `null` for a token with no successful snapshot yet. A token without alert state or without any snapshot has status `unknown`. When `stale` is true the status and streak are those of the last successful read (a failed read never changes them).
+`latest` is `null` for a token with no successful snapshot yet. A token without alert state or without any snapshot has status `unknown`. When `stale` is true the status and streak are those of the last successful read (a failed read never changes them), with one exception: a `green` token whose reads have been failing for longer than staleAfter (`stale_since` older than `max(5 x interval, 2 min)`) is reported as `unknown`, because its last green is no longer evidence. That includes a token whose snapshot stopped advancing: a snapshot not newer than the last processed block in a new round counts as a failed read (`last_error` "block not advancing"). Amber and red tokens keep their status while stale (a deficit already seen is never hidden by silence). A stale token counts as `unknown` in `tokens_by_status`, the overall `status` and the badges.
 
 `chain` is derived from the token id (display only, never used for alerting) because symbols repeat across chains: `NEAR` for plain NEAR contracts, `*.omft.near` by prefix (`Ethereum`, `Base`, `Arbitrum`, `Solana`, `Tron`, `Bitcoin`, `Zcash`, `Dogecoin`, `XRP Ledger`...), `Ethereum (Rainbow)` / `Bitcoin (Omni)` for `*.bridge.near` assets, and for HOT Omni `nep245:v2_1.omni.hot.tg:<chainId>_...` the chain id mapped to a name (`BNB Chain` for 56, `Polygon` for 137, `TON` for 1117...; unknown ids render as `HOT Omni <id>`). `usd_price` is not implemented yet and is always absent.
 
@@ -77,7 +78,7 @@ Same object as one element of `/v1/tokens`, plus `"open_incident": <Incident|nul
 
 ## `GET /v1/tokens/{id}/history?from=&to=&limit=`
 
-`from`/`to` are RFC 3339 times or block heights (integers). Default: last 24 h. `limit` default 2000, max 10000. When the range has more points than `limit`, the server downsamples evenly but always keeps every snapshot with `gap < 0`.
+`from`/`to` are RFC 3339 times or block heights (integers). Default: last 24 h. `limit` default 2000, max 10000. When the range has more points than `limit`, the server downsamples evenly. While the snapshots with `gap < 0` number at most `limit`, every one of them is kept (so the response can exceed `limit`). When negative snapshots alone exceed `limit` (a long incident) they are downsampled too, but the first and last point of the range, the first and last point of every negative run (the sign transitions) and the deepest-deficit point of every run are always kept.
 
 ```json
 {
@@ -155,7 +156,7 @@ The October 2026 incident replay result, loaded from `evidence/replay-2026-10-01
 
 ## `GET /v1/badge/{id}.svg` (P1)
 
-Shields-style flat SVG badge (`image/svg+xml`, `Cache-Control: public, max-age=60`): `argus | green` for one token (`{id}` is the URL-escaped token id followed by `.svg`), or `/v1/badge/all.svg` for the overall status (`unknown` when the monitor is stale). Colours: green, amber, red, grey for unknown. An unknown token id gets a grey `argus | not found` badge with status `404`; a path without the `.svg` suffix is a JSON `404`.
+Shields-style flat SVG badge (`image/svg+xml`, `Cache-Control: public, max-age=60`): `argus | green` for one token (`{id}` is the URL-escaped token id followed by `.svg`), or `/v1/badge/all.svg` for the overall status. Both show `unknown` when the monitor is stale (same rule as `monitor_stale`); a per-token badge also shows `unknown` for a green token that has been stale for longer than staleAfter. Colours: green, amber, red, grey for unknown. An unknown token id gets a grey `argus | not found` badge with status `404`; a path without the `.svg` suffix is a JSON `404`.
 
 ## `GET /healthz`
 
