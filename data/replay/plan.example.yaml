@@ -2,15 +2,15 @@
 #
 # `go run ./cmd/replay` refuses to run this file on purpose (block_height 0 and
 # ids that are not valid token ids are rejected). The real plan goes in
-# evidence/replay-plan.yaml once the affected token ids and block range are
+# data/replay/plan.yaml once the affected token ids and block range are
 # confirmed on archival RPC.
 #
 # Workflow (needs network access to an archival NEAR RPC):
 #   1. Turn UTC timestamps into heights:
 #        go run ./cmd/replay -find-heights 2026-09-29T16:00:00Z,2026-10-01T05:54:00Z
-#   2. Copy this file to evidence/replay-plan.yaml and fill it in.
+#   2. Copy this file to data/replay/plan.yaml and fill it in.
 #   3. go run ./cmd/replay            # fetches, caches, writes the JSON and Markdown
-#   4. go run ./cmd/replay -offline   # redoes it from evidence/replay-cache only
+#   4. go run ./cmd/replay -offline   # redoes it from data/replay/cache only
 #
 # UNVERIFIED hypothesis from docs/research.md (do not treat as fact): the
 # affected asset may be USDT on BSC via HOT Omni,

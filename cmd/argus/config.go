@@ -113,7 +113,7 @@ func LoadConfig(getenv func(string) string, requireDB bool) (Config, error) {
 		TokensFile:     str("ARGUS_TOKENS_FILE", ""),
 		OneClickURL:    str("ARGUS_ONECLICK_TOKENS_URL", ""),
 		PublicURL:      str("ARGUS_PUBLIC_URL", ""),
-		ReplayFile:     str("ARGUS_REPLAY_FILE", "evidence/replay-2026-10-01.json"),
+		ReplayFile:     str("ARGUS_REPLAY_FILE", "data/replay/2026-10-01.json"),
 		LogLevel:       strings.ToLower(str("ARGUS_LOG_LEVEL", "info")),
 		LLMBaseURL:     str("LLM_BASE_URL", ""),
 		LLMAPIKey:      str("LLM_API_KEY", ""),

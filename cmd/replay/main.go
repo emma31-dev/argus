@@ -1,11 +1,11 @@
 // Command replay re-runs the Argus snapshot calculation at historical block
-// heights on archival RPC (PRD 5.5) and writes the evidence files.
+// heights on archival RPC and writes the result files.
 //
-//	replay -plan evidence/replay-plan.yaml            # produce replay JSON + Markdown
+//	replay -plan data/replay/plan.yaml                # produce replay JSON + Markdown
 //	replay -offline                                   # same, from the cache only
 //	replay -find-heights 2026-10-01T05:54:00Z,...     # timestamps -> block heights
 //
-// Every request and response is cached in evidence/replay-cache/ (keyed by
+// Every request and response is cached in data/replay/cache/ (keyed by
 // the SHA-256 of the request body), so the committed cache lets anyone redo
 // the replay offline. Network requests are rate limited (default 1 per
 // second) and retried with backoff.
@@ -45,10 +45,10 @@ type options struct {
 
 func main() {
 	var o options
-	flag.StringVar(&o.Plan, "plan", "evidence/replay-plan.yaml", "replay plan (YAML)")
-	flag.StringVar(&o.OutJSON, "out-json", "evidence/replay-2026-10-01.json", "output JSON served by /v1/replay")
-	flag.StringVar(&o.OutMD, "out-md", "evidence/replay-2026-10-01.md", "output Markdown report")
-	flag.StringVar(&o.CacheDir, "cache", "evidence/replay-cache", "request/response cache directory")
+	flag.StringVar(&o.Plan, "plan", "data/replay/plan.yaml", "replay plan (YAML)")
+	flag.StringVar(&o.OutJSON, "out-json", "data/replay/2026-10-01.json", "output JSON served by /v1/replay")
+	flag.StringVar(&o.OutMD, "out-md", "data/replay/2026-10-01.md", "output Markdown report")
+	flag.StringVar(&o.CacheDir, "cache", "data/replay/cache", "request/response cache directory")
 	flag.BoolVar(&o.Offline, "offline", false, "use the cache only; fail if a request is missing")
 	flag.IntVar(&o.K, "k", 4, "debounce K (consecutive negative snapshots to turn red)")
 	flag.Float64Var(&o.RPS, "rps", 1, "maximum network requests per second")

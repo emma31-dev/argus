@@ -1,5 +1,5 @@
 // Package summary writes optional plain-English incident summaries with any
-// OpenAI-compatible chat-completions endpoint (PRD 6, P1, off by default).
+// OpenAI-compatible chat-completions endpoint (off by default).
 //
 // The model only ever writes text. It never sees live data beyond the
 // incident record, it cannot influence alert state, and every failure is

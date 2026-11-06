@@ -20,13 +20,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags "-s -w" -o /out/verify ./cmd/verify
 
 # ---- runtime: no shell, no package manager, non-root ----
-# Migrations are embedded in the binary. config/ and evidence/ are baked in as
+# Migrations are embedded in the binary. config/ and data/ are baked in as
 # defaults so the image runs standalone (e.g. on Fly); compose mounts over them.
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=builder /out/argus /out/replay /out/verify /app/
 COPY config /app/config
-COPY evidence /app/evidence
+COPY data /app/data
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/app/argus"]

@@ -40,7 +40,7 @@
 					: null;
 		return { blocks, secs };
 	}
-	const EVIDENCE_URL = `${REPO_URL}/tree/main/evidence`;
+	const REPLAY_DATA_URL = `${REPO_URL}/tree/main/data/replay`;
 </script>
 
 <svelte:head><title>October replay · Argus</title></svelte:head>
@@ -74,7 +74,7 @@
 				<p>
 					Reconstructing the exploit needs historical state from around 2026-10-01, which only archival RPC nodes keep.
 					Free archival access is heavily rate-limited, so the replay is run once, offline, with every response cached
-					and committed to <code>evidence/replay-2026-10-01.json</code>. This page fills in as soon as that file exists.
+					and committed to <code>data/replay/2026-10-01.json</code>. This page fills in as soon as that file exists.
 				</p>
 				<div class="will">
 					<p class="eyebrow">What it will show</p>
@@ -87,7 +87,7 @@
 				</div>
 				<div class="actions">
 					<a class="btn" href={href.how('#context')}>Background on the incident</a>
-					<a class="btn btn-ghost" href={EVIDENCE_URL} target="_blank" rel="noopener noreferrer">Evidence folder <Icon name="external" size={13} /></a>
+					<a class="btn btn-ghost" href={REPLAY_DATA_URL} target="_blank" rel="noopener noreferrer">Replay data <Icon name="external" size={13} /></a>
 				</div>
 			</div>
 		</section>

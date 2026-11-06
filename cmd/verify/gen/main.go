@@ -1,8 +1,8 @@
-// Command gen regenerates the SYNTHETIC fixture set used by `make verify`.
+// Command gen regenerates the SYNTHETIC fixture set that cmd/verify replays.
 //
-//	go run ./cmd/verify/gen [-out evidence/fixtures/synthetic]
+//	go run ./cmd/verify/gen [-out data/fixtures/synthetic]
 //
-// The data is invented (see the generated README.md in the output directory).
+// The data is invented; the scenario lives in internal/fixturegen.
 package main
 
 import (
@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	out := flag.String("out", "evidence/fixtures/synthetic", "output directory")
+	out := flag.String("out", "data/fixtures/synthetic", "output directory")
 	flag.Parse()
 	if err := fixturegen.Generate(*out); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)

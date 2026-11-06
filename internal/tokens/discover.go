@@ -53,7 +53,7 @@ type Discoverer interface {
 	Discover(ctx context.Context) ([]model.Token, string, error)
 }
 
-// Chain implements the PRD 5.1 discovery order: enumeration, then the 1Click
+// Chain implements the discovery order: enumeration, then the 1Click
 // list, then the committed config. The first source that yields tokens
 // provides the id set; 1Click metadata fills in symbol and decimals when
 // enumeration was used; config entries always override symbol and decimals.

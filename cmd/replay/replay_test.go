@@ -221,7 +221,7 @@ func TestErrorsAreNotCached(t *testing.T) {
 }
 
 func TestPlanValidation(t *testing.T) {
-	ex, err := os.ReadFile("../../evidence/replay-plan.example.yaml")
+	ex, err := os.ReadFile("../../data/replay/plan.example.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

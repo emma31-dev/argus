@@ -126,7 +126,7 @@ The incident plus `"events": [IncidentEvent...]` (see `internal/model`; always a
 
 ## `GET /v1/replay`
 
-The October 2026 incident replay result, loaded from `evidence/replay-2026-10-01.json`. `404 {"error":"replay not available"}` if that file doesn't exist.
+The October 2026 incident replay result, loaded from `data/replay/2026-10-01.json`. `404 {"error":"replay not available"}` if that file doesn't exist.
 
 ```json
 {

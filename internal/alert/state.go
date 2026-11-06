@@ -90,7 +90,7 @@ func parseInt(s string) (*big.Int, bool) {
 // the Engine, which knows a round's boundaries, turns a snapshot that fails
 // to advance the block in a new round into a failed read (see Engine.Process).
 //
-// Rules (PRD 5.3): gap >= 0 is green. gap < 0 increments the negative streak;
+// Rules: gap >= 0 is green. gap < 0 increments the negative streak;
 // the token is amber while streak < K and red once streak >= K or the deficit
 // reaches the absolute threshold. While red, a new maximum deficit yields
 // IncidentUpdate. Recovery from red yields Recovered; recovery from amber

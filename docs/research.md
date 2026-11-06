@@ -1,12 +1,12 @@
 # Argus research notes
 
-**Compiled:** 2026-11-03 by the research agent · **Scope:** PRD sections 2, 3, 5, 6 and 7 · **Status:** input for the coding agents
+Written 2026-11-03 as background for the monitor design.
 
-Every fact below has a source. Anything I could not confirm against a primary source is marked **UNVERIFIED**. Where I worked something out from code and not from a document, it says **INFERRED**.
+Every fact below has a source. Anything that could not be confirmed against a primary source is marked **UNVERIFIED**. Where something was worked out from code and not from a document, it says **INFERRED**.
 
 ## 0. How this research was done, and what could not be reached
 
-The sandbox limited what I could check, and that affects how much weight each section can bear.
+The sandbox limited what could be checked, and that affects how much weight each section can bear.
 
 | Access path | Result |
 |---|---|
@@ -30,46 +30,46 @@ Repositories read (commit = HEAD at the time of reading):
 
 ## 1. Official postmortem
 
-### What I found
+### Findings
 
-- **The official postmortem text could not be retrieved.** No search result gave a URL on a NEAR Intents domain or an X status URL for it, and WebFetch is blocked, so I can't quote it directly. **UNVERIFIED: the primary URL.**
+- **The official postmortem text could not be retrieved.** No search result gave a URL on a NEAR Intents domain or an X status URL for it, and WebFetch is blocked, so it can't be quoted directly. **UNVERIFIED: the primary URL.**
 - Per secondary coverage (search summaries), it is titled **"Postmortem: NEAR Intents October 1 Exploit"**. It was published by **Alex Shevchenko** (NEAR Intents GM, X handle reported as `@AlexAuroraDev`) on **2026-10-16, around 15:56 UTC**. One outlet (TechFlow) dates it 2026-10-17. Sources: https://www.cryptotimes.io/2026/10/17/near-intents-traces-3-8m-exploit-to-smart-contract-deposit-bug/ , https://shattered.io/near-intents-3-8m-hack-postmortem-clears-omni-2026/ , https://www.techflowpost.com/en-US/newsletter/140312 , https://www.kucoin.com/news/insight/NEAR/6ad36dcdc31ba8000731f132
-- It was most likely posted on X (the coverage attributes it to Shevchenko's account). **UNVERIFIED.** The PRD's README task to "cite it directly" is still open; see Open questions.
+- It was most likely posted on X (the coverage attributes it to Shevchenko's account). **UNVERIFIED.** Linking it directly is still open; see Open questions.
 
 ### Key claims, as reported second-hand (search summaries; not verbatim quotes)
 
 | Item | What secondary sources say | Sources |
 |---|---|---|
-| Root cause | A bug in the **NEAR Intents contract's deposit-notification feature**, not in Omni. The attacker deployed a contract built to make the notification fail, so "the token contract refunded the deposit while NEAR Intents retained the corresponding ledger credit". The postmortem reverses the initial 2026-10-01 statement that blamed the "Omni deposit and withdrawal infrastructure". | thedefiant.io (PRD link), cryptotimes.io, shattered.io |
+| Root cause | A bug in the **NEAR Intents contract's deposit-notification feature**, not in Omni. The attacker deployed a contract built to make the notification fail, so "the token contract refunded the deposit while NEAR Intents retained the corresponding ledger credit". The postmortem reverses the initial 2026-10-01 statement that blamed the "Omni deposit and withdrawal infrastructure". | thedefiant.io, cryptotimes.io, shattered.io |
 | Failed deposits | **23** failed deposit transactions | thedefiant.io, kucoin flash, chaincatcher https://www.chaincatcher.com/en/article/2296917 |
 | Amount | **about $3.8M** of unbacked "ghost" internal balances. Bitquery's on-chain figure is **$3.865M / $3.87M USDT**. One KuCoin flash headline says "$380,000", which looks like a typo since every other outlet says $3.8M. | https://bitquery.io/investigations/near-intents-hack , https://www.kucoin.com/news/flash/near-intents-reveals-380k-usd-funds-fully-recovered-after-october-1-vulnerability-incident |
 | Affected token / chain | Outflow was **USDT on BNB Chain (BSC)**: "isolated to USDT on BSC", in five withdrawals from a NEAR-Intents-linked BSC vault, after two test withdrawals of 10 and 11 USDT (Bitquery, via search summary). Unchained counts seven withdrawals. | bitquery.io (above), https://unchainedcrypto.com/near-intents-pledges-full-compensation-after-a-bug-lets-an-attacker-drain-3-8-million/ , https://coincentral.com/near-intents-hacked-for-3-8-million-in-latest-crypto-exploit |
 | Attacker addresses | BSC address **`0x09fd1f5d9f185067a92493e43aa259ea4ab3ad37`** (Rekt; a French article attributes it to ZachXBT). **No NEAR attacker account id or attacker contract id was found in any source. UNVERIFIED.** | https://rekt.news/near-intents-rekt (search summary) |
 | Time window | Exploit withdrawals ran **2026-09-29 16:14 UTC → 2026-10-01 05:54 UTC**. The team identified withdrawal problems at **08:04 UTC on Oct 1** and **paused the Intents contract at 08:33 UTC** (about 29 minutes later). It reopened on Oct 2. Other outlets say "began late Sept 30". **No block heights or tx hashes were found in any source.** | search summaries of cryptotimes / shattered / kucoin insight |
-| Monitoring gap | Monitoring compared origin-chain (bridge vault) assets with NEAR-side token totals, but **did not compare aggregate users' internal balances with the tokens held by the Intents contract**. | kucoin flash (PRD link), cryptotimes |
+| Monitoring gap | Monitoring compared origin-chain (bridge vault) assets with NEAR-side token totals, but **did not compare aggregate users' internal balances with the tokens held by the Intents contract**. | kucoin flash, cryptotimes |
 | Remediation | (a) The deposit-notification feature was **removed entirely on 2026-10-07**, reportedly after a separate critical report from a white-hat researcher (reported $300k bounty). (b) A new **invariant check comparing user balances with the contract's balances, which auto-pauses** the contract on mismatch. KuCoin insight also reports that the same callback feature had been reported and patched earlier through the bug bounty before it was exploited. | shattered.io, kucoin insight, coingabbar https://www.coingabbar.com/en/near-intents-exploit-deposit-flaw-3-8m-recovered |
 | Recovery | Attacker returned all funds **within 36 hours of detection** (around Oct 2), and affected users were compensated. Some outlets say "24 hours" or "48-hour deadline". | https://www.cryptotimes.io/2026/10/03/near-intents-ends-exploit-probe-after-3-8-million-is-returned/ , https://shattered.io/near-intents-hack-3-8-million-returned-2026/ |
 
-### Comparison with the PRD's secondary figures
+### Checking the secondary figures
 
-| PRD figure | Finding |
+| Reported figure | Finding |
 |---|---|
 | $3.8M | Consistent. On-chain tracing gives $3.865M USDT (Bitquery). |
 | 23 failed deposits | Consistent across every outlet that gives a count. |
 | Returned within 36h | Consistent with the postmortem summaries. Early outlets say 24h or 48h. |
 | Mechanism ("a deposit path notified a third-party contract ... the token contract refunded the deposit while NEAR Intents kept the ledger credit") | Consistent with the summaries **and** with the contract code (section 2). |
 | Monitoring gap and auto-pause | Consistent. |
-| Not in the PRD | The affected asset was **USDT on BSC**. The notify feature was **removed on 2026-10-07** (`defuse/v0.4.5`). The contract was **paused around 08:33 UTC on 2026-10-01**. |
+| Not in the early coverage | The affected asset was **USDT on BSC**. The notify feature was **removed on 2026-10-07** (`defuse/v0.4.5`). The contract was **paused around 08:33 UTC on 2026-10-01**. |
 
 ### Secondary sources checked
 
-The Defiant, KuCoin flash (both URLs above), KuCoin insight, The Block (PRD link, not opened), Crypto Times (three articles), ChainCatcher, TechFlow, Shattered.io (two articles), Coingabbar, Defiprime https://defiprime.com/near-intents-recovers-3-8m-after-contract-exploit , Rekt, Bitquery, Unchained, Coincentral, Cointelegraph https://cointelegraph.com/news/near-intents-says-its-identified-the-hacker-gives-48-hour-ultimatum , and thecoding.substack.com https://thecoding.substack.com/p/near-intents-ghost-fund-postmortem (fetch blocked; search summary only).
+The Defiant, KuCoin flash (both URLs above), KuCoin insight, The Block (not opened), Crypto Times (three articles), ChainCatcher, TechFlow, Shattered.io (two articles), Coingabbar, Defiprime https://defiprime.com/near-intents-recovers-3-8m-after-contract-exploit , Rekt, Bitquery, Unchained, Coincentral, Cointelegraph https://cointelegraph.com/news/near-intents-says-its-identified-the-hacker-gives-48-hour-ultimatum , and thecoding.substack.com https://thecoding.substack.com/p/near-intents-ghost-fund-postmortem (fetch blocked; search summary only).
 
-**Verdict / what implementers should do:** The README can state the PRD's figures (23 deposits, about $3.8M, returned within 36h, monitoring gap, auto-pause) and cite at least two secondary sources plus the code evidence in section 2. Before publishing, the builder must open the official postmortem on X and paste its exact URL. Search for "Postmortem: NEAR Intents October 1 Exploit", posted by @AlexAuroraDev on 2026-10-16. Add the affected asset (USDT on BSC) and the 2026-10-07 removal of the notify feature only after checking the official text.
+**Takeaway:** The README can state the reported figures (23 deposits, about $3.8M, returned within 36h, monitoring gap, auto-pause) and cite at least two secondary sources plus the code evidence in section 2. Before relying on these, someone still needs to open the official postmortem on X and paste its exact URL. Search for "Postmortem: NEAR Intents October 1 Exploit", posted by `@AlexAuroraDev` on 2026-10-16. Add the affected asset (USDT on BSC) and the 2026-10-07 removal of the notify feature only after checking the official text.
 
 ---
 
-## 2. Exploit on-chain details (for the PRD 5.5 replay)
+## 2. Exploit on-chain details (for the replay)
 
 ### 2.1 Patch and incident commits in `github.com/near/intents`
 
@@ -114,11 +114,11 @@ The fixes were #240 (cap by deposited amount, already on main), #364 (≤10 toke
 
 ### 2.4 Block range
 
-Not published anywhere I could reach. **UNVERIFIED.** Time anchors (UTC) from the secondary sources: first exploit activity around 2026-09-29 16:14, last withdrawal 2026-10-01 05:54, pause 2026-10-01 08:33, contract reopened 2026-10-02, funds returned by about 2026-10-02.
+Not published anywhere reachable. **UNVERIFIED.** Time anchors (UTC) from the secondary sources: first exploit activity around 2026-09-29 16:14, last withdrawal 2026-10-01 05:54, pause 2026-10-01 08:33, contract reopened 2026-10-02, funds returned by about 2026-10-02.
 
 Mainnet epochs are 43,200 blocks, with a nominal 0.6 s block time (https://github.com/near/docs/blob/e2d2ea173cf462bcf518ecae5650984a221d5183/protocol/network/epoch.mdx). So the window is roughly 37.7 h, or about 2.2×10^5 blocks. **Do not hard-code estimated heights.**
 
-**Verdict / what implementers should do (replay plan):**
+**Replay plan:**
 1. Convert the UTC anchors to heights by bisecting on `header.timestamp` (nanoseconds). Use either `https://mainnet.neardata.xyz/v0/block/{h}/headers`, which serves full history from genesis 9820210 and is free (section 7), or the archival `block` RPC. About 18 requests per anchor.
 2. Check which contract version was live: run `query` / `view_account` on `intents.near` at the start height and compare the `code_hash` with a build of tag `defuse/v0.4.2`.
 3. At about 12 heights across [anchor − 1 h, reopen + 1 h], call `intents.near.mt_batch_supply` for the candidate tokens and the matching held methods (section 3/4). Start with `nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g` and the other BSC/HOT tokens. If none shows a deficit, run the full `mt_tokens` sweep at a single post-exploit, pre-pause height (2026-10-01 around 06:00 UTC) to find the deficit token. This is the same method as `scripts/list_nep245_tokens.sh`.
@@ -170,12 +170,12 @@ fn mt_batch_supply(&self, token_ids: Vec<defuse_nep245::TokenId>) -> Vec<Option<
 
 Notes:
 - **`mt_tokens` exists and enumerates `total_supplies`** (https://github.com/near/intents/blob/7fe27bf7c77adf657b652e0555a4aef660b489fc/contracts/defuse/src/contract/tokens/nep245/enumeration.rs#L8-L29). Zero-supply tokens are removed from the map automatically (`DefaultMap::entry_or_default` removes entries that return to default, `crates/map-utils/src/cleanup.rs` L16-L21), so `mt_tokens` lists tokens with **non-zero supply**. The NEAR Intents team pages it with `limit` 5000 in `scripts/list_nep245_tokens.sh`. The total count is **UNVERIFIED**. Order is storage-iteration order, so use `from_index` paging and do not assume sorting.
-- `BATCH_MAX_TOKENS = 10` (`contracts/defuse/core/src/tokens.rs`) applies only to deposits, withdrawals and transfers, **not** to view methods. The batch size for `mt_batch_supply` is limited by view gas and response size only. Start with 50–100 per call, as the PRD suggests, and measure.
+- `BATCH_MAX_TOKENS = 10` (`contracts/defuse/core/src/tokens.rs`) applies only to deposits, withdrawals and transfers, **not** to view methods. The batch size for `mt_batch_supply` is limited by view gas and response size only. Start with 50–100 per call, and measure.
 - Token id parsing (`crates/primitives/token-id/src/lib.rs` L85-L95, `nep245.rs` L46-L51): split at the first `:` to get the standard. For `nep245`, the contract is everything up to the **next** `:` and the inner id is **the remainder, which may contain `:`**. Standards: `nep141`, `nep171`, `nep245`, `imt`.
 - **`imt:` tokens ("intent mintable", `imt:<minter_id>:<token_id>`) have no external backing by design.** They are compiled in only with the `imt` / `far` feature. The default reproducible build is `--features=contract` (no `imt`), see `contracts/defuse/Cargo.toml`. Whether `intents.near` has them is **UNVERIFIED**. Argus must skip `imt:` (and `nep171:`) ids.
 - `owed(T)` = `mt_supply(T)` includes all internal holders, including the fee collector. That is the right "owed" quantity.
 
-**Verdict / what implementers should do:** Capability check 1 should pass. Use `mt_batch_supply({"token_ids":[...]})`, and treat `"0"` and `null` differently: `null` means a malformed id, which is a bug to log. Use `mt_tokens` paging as discovery option 1. The event-delta fallback is unlikely to be needed.
+**Takeaway:** `probe owed` should pass. Use `mt_batch_supply({"token_ids":[...]})`, and treat `"0"` and `null` differently: `null` means a malformed id, which is a bug to log. Use `mt_tokens` paging as discovery option 1. The event-delta fallback is unlikely to be needed.
 
 ---
 
@@ -190,10 +190,10 @@ Notes:
   - `nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr`: USDT on Polygon, 6 decimals.
   - `nep245:v2_1.omni.hot.tg:1117_`: native TON, 9 decimals. **The inner id is literally `1117_`**, so the parser must allow an empty suffix.
   - `nep245:v2_1.omni.hot.tg:1100_111bzQBB5v7AhLyPMDwS8uJgQV24KaAPXtwyVWu2KXbbfQU6NXRCz`: XLM, 7 decimals.
-- Whether `v2_1.omni.hot.tg` implements `mt_batch_balance_of` (to fetch all HOT tokens in one call) is **UNVERIFIED**; its source was not found. Try it in capability check 2 and fall back to per-token `mt_balance_of`.
+- Whether `v2_1.omni.hot.tg` implements `mt_batch_balance_of` (to fetch all HOT tokens in one call) is **UNVERIFIED**; its source was not found. Try it in `probe held` and fall back to per-token `mt_balance_of`.
 - Native NEAR is not a separate Intents token. Native deposits are wrapped into `nep141:wrap.near` (`contracts/defuse/src/contract/tokens/nep141/native.rs`), so `held(wNEAR) = wrap.near.ft_balance_of(intents.near)`.
 
-**Verdict / what implementers should do:** Use `ft_balance_of` for `nep141:<c>` and `mt_balance_of(intents.near, <inner_id>)` on `<c>` for `nep245:<c>:<inner_id>`, both at the same `block_id`. Group per contract, and try `mt_batch_balance_of` on `v2_1.omni.hot.tg`.
+**Takeaway:** Use `ft_balance_of` for `nep141:<c>` and `mt_balance_of(intents.near, <inner_id>)` on `<c>` for `nep245:<c>:<inner_id>`, both at the same `block_id`. Group per contract, and try `mt_batch_balance_of` on `v2_1.omni.hot.tg`.
 
 ---
 
@@ -213,7 +213,7 @@ The code adds a fourth prefix, `imt:` (section 3).
 
 - **Endpoint:** `GET https://1click.chaindefuser.com/v0/tokens`. Sources: the 1Click OpenAPI spec (`servers: - url: https://1click.chaindefuser.com`, `paths: /v0/tokens: get: operationId getTokens`) in https://github.com/defuse-protocol/one-click-sdk-go/blob/42ad1e6c8172b552c243270d3f5318d50c209813/api/openapi.yaml , and the docs page https://docs.near-intents.org/integration/distribution-channels/1click-api/quickstart/making-a-request (search summary: "take the asset id from /v0/tokens").
 - **Auth:** **none required.** In the spec, `/v0/tokens` has **no `security` entry**, while `/v0/quote`, `/v0/status` and the others list `JWT-auth` (bearer, "Enter JWT token (optional)").
-- **Rate limit:** not documented in the spec. **UNVERIFIED.** Call it once a day, as the PRD plans.
+- **Rate limit:** not documented in the spec. **UNVERIFIED.** Once a day is enough.
 - **Response:** a JSON array of `TokenResponse`:
 
 ```yaml
@@ -236,7 +236,7 @@ TokenResponse:
 
 ### 5.3 Candidate `config/tokens.yaml`
 
-Source for every row: NEAR Intents' own production token list, `src/tokens/production.json` in https://github.com/defuse-protocol/defuse-frontend/blob/594085d3c7e60ce912fb62b768b12f46c4917510/src/tokens/production.json (146 entries; 111 `nep141`, 32 `nep245`, 3 `1cs_v1`). Rows were chosen by the list's `tvol:` (trading-volume rank) and `mc:` tags. `decimals` is the NEAR-side decimals from that file. **Capability check 2 should confirm each one** with `ft_metadata` / mt metadata; that was not done here.
+Source for every row: NEAR Intents' own production token list, `src/tokens/production.json` in https://github.com/defuse-protocol/defuse-frontend/blob/594085d3c7e60ce912fb62b768b12f46c4917510/src/tokens/production.json (146 entries; 111 `nep141`, 32 `nep245`, 3 `1cs_v1`). Rows were chosen by the list's `tvol:` (trading-volume rank) and `mc:` tags. `decimals` is the NEAR-side decimals from that file. **`probe held` should confirm each one** with `ft_metadata` / mt metadata; that was not done here.
 
 ```yaml
 # config/tokens.yaml — source: defuse-protocol/defuse-frontend@594085d src/tokens/production.json (2026-10-06)
@@ -272,7 +272,7 @@ tokens:
 
 Symbols repeat across chains (USDT ×4, USDC ×5, ETH ×4). The dashboard needs a `chain` label as well as the symbol.
 
-**Verdict / what implementers should do:** Discovery order: (1) `intents.near.mt_tokens` paging, which exists; (2) `GET https://1click.chaindefuser.com/v0/tokens` (no auth) for symbol, decimals and price metadata keyed by `assetId`; (3) the YAML above. Join on the Intents id. Tokens found by `mt_tokens` that have no metadata still get owed/held raw values, with decimals fetched from `ft_metadata` or marked unknown.
+**Takeaway:** Discovery order: (1) `intents.near.mt_tokens` paging, which exists; (2) `GET https://1click.chaindefuser.com/v0/tokens` (no auth) for symbol, decimals and price metadata keyed by `assetId`; (3) the YAML above. Join on the Intents id. Tokens found by `mt_tokens` that have no metadata still get owed/held raw values, with decimals fetched from `ft_metadata` or marked unknown.
 
 ---
 
@@ -297,17 +297,17 @@ Source: https://github.com/near/docs/blob/e2d2ea173cf462bcf518ecae5650984a221d51
 
 Lava, All That Node, QuickNode, Tatum, Zeeve and node101 have no public URL listed ("N/A").
 
-**Corrections to the PRD:**
+**Corrections to the original plan:**
 - docs.near.org lists FastNEAR's public free endpoint as **`https://free.rpc.fastnear.com`**, not `https://rpc.mainnet.fastnear.com`. FastNEAR's own docs list **`https://rpc.mainnet.fastnear.com`** (regular) and **`https://archival-rpc.mainnet.fastnear.com`** (archival), used with an optional API key (`Authorization: Bearer` or `?apiKey=`) (https://github.com/fastnear/builder-docs/blob/240ab2d80466774f1e6993c3b8b967af1b26fa91/docs/rpc/index.md). Whether `rpc.mainnet.fastnear.com` and `archival-rpc.mainnet.fastnear.com` work **without a key** is **UNVERIFIED**. docs.near.org says FastNEAR archival is "Paid Only".
 - `https://rpc.mainnet.near.org` now appears only in the docs' curl example ("Making requests"), not in the provider table. Its current status is **UNVERIFIED**.
 - The only free archival endpoint documented is `https://archival-rpc.mainnet.near.org`, which is severely rate limited. Keep the replay small, as planned.
-- **nearcore does not support JSON-RPC batch requests.** "If the body is a JSON array, a nearcore node rejects the whole request with HTTP 400 and error code -32700". Send one request object per HTTP request (same providers.mdx). The PRD's "batched" reads must use `mt_batch_supply`-style contract batching, not JSON-RPC batching.
+- **nearcore does not support JSON-RPC batch requests.** "If the body is a JSON array, a nearcore node rejects the whole request with HTTP 400 and error code -32700". Send one request object per HTTP request (same providers.mdx). "Batched" reads must use `mt_batch_supply`-style contract batching, not JSON-RPC batching.
 
 ### 6.2 History retention on non-archival nodes
 
 - "A regular RPC node keeps approximately 36 hours of history - 5 epochs" and "History retention | 5 epochs (~36 hours) by default; configurable" (https://github.com/near/docs/blob/e2d2ea173cf462bcf518ecae5650984a221d5183/integrations/nodes.mdx L12, L20).
 - "Nodes garbage collect blocks after 5 epochs (~1.5 days)". An epoch is 43,200 blocks, nominally 7.2 h at 0.6 s per block (https://github.com/near/docs/blob/e2d2ea173cf462bcf518ecae5650984a221d5183/protocol/network/epoch.mdx L10-L13).
-- The PRD's "~2.5 epochs / ~60h" is **not what the docs say**. Per the docs, recent `block_id` queries work for about 5 epochs (about 36 h). Providers may configure this differently, so capability check 3 should measure it per provider.
+- The earlier "~2.5 epochs / ~60h" estimate is **not what the docs say**. Per the docs, recent `block_id` queries work for about 5 epochs (about 36 h). Providers may configure this differently, so `probe sameblock` should measure it per provider.
 
 ### 6.3 `query` / `call_function` shapes
 
@@ -336,7 +336,7 @@ Errors come back in four ways. Check `error` first, then `result.error`:
   ```
   Missing method: `...MethodResolveError(MethodNotFound)`. Account without a contract: the message starts with `wasm execution failed with error: CompilationError(CodeDoesNotExist`. Contract panics (for example a bad token id on some token contracts) also land here.
 
-**Verdict / what implementers should do:** Provider list for `config`: primary `https://free.rpc.fastnear.com`; fallbacks `https://rpc.mainnet.fastnear.com` (test keyless), `https://near.blockpi.network/v1/rpc/public` (20 rps), `https://near.drpc.org`, `https://rpc.intea.rs`, `https://rpc.mainnet.near.org` (test). Archival: `https://archival-rpc.mainnet.near.org` (plus `https://archival-rpc.mainnet.fastnear.com` if a free key works). Fall back when the response has `GARBAGE_COLLECTED_BLOCK` or `UNKNOWN_BLOCK`. Never send JSON-RPC batch arrays. Treat `result.error` as a per-call failure, not a transport failure. To keep all reads at one block, take `H` from one provider and send `block_id: H` to all of them. If a fallback answers `UNKNOWN_BLOCK` for a fresh `H` (it is lagging), retry with backoff.
+**Takeaway:** Provider list for `config`: primary `https://free.rpc.fastnear.com`; fallbacks `https://rpc.mainnet.fastnear.com` (test keyless), `https://near.blockpi.network/v1/rpc/public` (20 rps), `https://near.drpc.org`, `https://rpc.intea.rs`, `https://rpc.mainnet.near.org` (test). Archival: `https://archival-rpc.mainnet.near.org` (plus `https://archival-rpc.mainnet.fastnear.com` if a free key works). Fall back when the response has `GARBAGE_COLLECTED_BLOCK` or `UNKNOWN_BLOCK`. Never send JSON-RPC batch arrays. Treat `result.error` as a per-call failure, not a transport failure. To keep all reads at one block, take `H` from one provider and send `block_id: H` to all of them. If a fallback answers `UNKNOWN_BLOCK` for a fresh `H` (it is lagging), retry with backoff.
 
 ---
 
@@ -372,7 +372,7 @@ Sources: https://github.com/fastnear/neardata-server/blob/7324d9131e7e8285306606
 - **Finding `intents.near` logs:** for each `shards[].receipt_execution_outcomes[]`, keep entries where `execution_outcome.outcome.executor_id == "intents.near"`, then parse each `outcome.logs[]` string that starts with `EVENT_JSON:`. **Count only outcomes whose `status` is `SuccessValue` or `SuccessReceiptId`.** A failed receipt's state changes are reverted, so its events must not be counted. To fetch less, once you know the `intents.near` shard, `/v0/block/:h/shard/:shard_id` returns just that shard. Shard layout can change at resharding, so re-derive it and don't hard-code it.
 - **Rate check:** NEAR produces about 1.67 blocks/s, roughly 100 blocks/min. Following every final block uses about 100 of the 180 req/min, which leaves about 80 req/min to catch up after downtime. That is fine for live following, and tight for backfill (a 37 h replay window is about 2.2×10^5 blocks, roughly 21 h at full rate). Use it for targeted ranges only.
 
-**Verdict / what implementers should do:** Capability check 4 is expected to pass. Poll `/v0/block/{h}` sequentially from `/v0/last_block/final`, follow redirects, treat `null` as a skipped height, cap at ≤150 req/min with backoff on 429, filter by `executor_id == "intents.near"` and success status.
+**Takeaway:** `probe events` is expected to pass. Poll `/v0/block/{h}` sequentially from `/v0/last_block/final`, follow redirects, treat `null` as a skipped height, cap at ≤150 req/min with backoff on 429, filter by `executor_id == "intents.near"` and success status.
 
 ---
 
@@ -429,9 +429,9 @@ EVENT_JSON:{"standard":"dip4","version":"0.4.3","event":"ft_withdraw","data":[{"
 EVENT_JSON:{"standard":"dip4","version":"0.4.3","event":"mt_withdraw","data":[{"intent_hash":"<base58>","account_id":"alice.near","token":"alice.near","receiver_id":"alice.near","token_ids":["nep141:token.near"],"amounts":["100"]}]}
 EVENT_JSON:{"standard":"dip4","version":"0.4.3","event":"native_withdraw","data":[{"intent_hash":"<base58>","account_id":"alice.near","receiver_id":"alice.near","amount":"100000000000000000000000000"}]}
 ```
-The serialization of `storage_deposit` and `min_gas` (string or number) is **UNVERIFIED**. Capture real mainnet lines in capability check 4 and commit them as test fixtures.
+The serialization of `storage_deposit` and `min_gas` (string or number) is **UNVERIFIED**. Capture real mainnet lines in `probe events` and commit them as test fixtures.
 
-**Verdict / what implementers should do:** Parse the envelope generically: prefix `EVENT_JSON:`, then switch on `standard` + `event`, and ignore `version`. For owed deltas, use only NEP-245 `mt_mint` / `mt_burn` from successful `intents.near` receipts. Use the DIP-4 events for incident context. Replace the built examples above with real captured lines as soon as neardata is reachable.
+**Takeaway:** Parse the envelope generically: prefix `EVENT_JSON:`, then switch on `standard` + `event`, and ignore `version`. For owed deltas, use only NEP-245 `mt_mint` / `mt_burn` from successful `intents.near` receipts. Use the DIP-4 events for incident context. Replace the built examples above with real captured lines as soon as neardata is reachable.
 
 ---
 
@@ -442,7 +442,7 @@ The serialization of `storage_deposit` and `min_gas` (string or number) is **UNV
 - Tokens that `mt_tokens` finds but 1Click doesn't list will have no USD value. Show "n/a".
 - Alternative (not researched in depth): CoinGecko's public API, which needs a mapping and has its own free-tier rules. **UNVERIFIED.**
 
-**Verdict / what implementers should do:** Use 1Click `/v0/tokens` as the P1 price source. Cache it and refresh at most every 5 minutes.
+**Takeaway:** Use 1Click `/v0/tokens` as the P1 price source. Cache it and refresh at most every 5 minutes.
 
 ---
 
@@ -468,8 +468,8 @@ Research and dev only (to finish this document and to read docs):
 
 ## Open questions
 
-1. **Official postmortem URL and verbatim text.** I could not retrieve it. The builder must open @AlexAuroraDev / @near_intents on X (2026-10-16) and confirm root cause, amounts, the asset and any block heights or tx hashes. Allowlisting `x.com` or `docs.near-intents.org` would let an agent do it.
-2. **Affected Intents token id(s) and the 23 deposit tx hashes / block range.** Not public in any source I could reach. Best hypothesis: `nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g` (USDT on BSC via HOT Omni). Confirm with archival `mt_supply` vs held reads (section 2 plan).
+1. **Official postmortem URL and verbatim text.** Someone still needs to open `@AlexAuroraDev` / `@near_intents` on X (2026-10-16) and confirm root cause, amounts, the asset and any block heights or tx hashes. Allowlisting `x.com` or `docs.near-intents.org` would let an agent do it.
+2. **Affected Intents token id(s) and the 23 deposit tx hashes / block range.** Not public in any reachable source. Best hypothesis: `nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g` (USDT on BSC via HOT Omni). Confirm with archival `mt_supply` vs held reads (section 2 plan).
 3. **Which `intents.near` code version was live on 2026-09-29 to 2026-10-01?** Likely `defuse/v0.4.2`. Confirm via `code_hash` at those heights.
 4. **Keyless access** to `rpc.mainnet.fastnear.com` and `archival-rpc.mainnet.fastnear.com`, and whether `rpc.mainnet.near.org` still serves the public.
 5. **Real retention window** of each free non-archival provider (docs: about 5 epochs / about 36 h). Measure in check 3.

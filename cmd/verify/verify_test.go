@@ -16,7 +16,7 @@ import (
 	"github.com/emma31-dev/argus/internal/fixturegen"
 )
 
-const syntheticDir = "../../evidence/fixtures/synthetic"
+const syntheticDir = "../../data/fixtures/synthetic"
 
 func TestSyntheticSetMatchesExpected(t *testing.T) {
 	o, err := replayFixture(context.Background(), syntheticDir)

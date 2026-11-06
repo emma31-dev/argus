@@ -1,16 +1,16 @@
-// Command verify is the offline check behind `make verify` (PRD 9).
+// Command verify is the offline end-to-end check: no network, no keys.
 //
 // It replays recorded JSON-RPC exchanges through the real snapshot reader
 // and the real alert engine, prints a status table and the transitions it
 // saw, and exits non-zero if the result differs from the fixture's
 // expected.json.
 //
-//	go run ./cmd/verify                 # check every fixture set under evidence/fixtures
-//	go run ./cmd/verify -capture        # record ONE live round into evidence/fixtures/live-<block>
+//	go run ./cmd/verify                 # check every fixture set under data/fixtures
+//	go run ./cmd/verify -capture        # record ONE live round into data/fixtures/live-<block>
 //
-// Fixture sets are searched in this order: evidence/fixtures/live-*/ (real
-// captures), then evidence/fixtures/synthetic/ (invented data, see its
-// README.md; regenerate with `go run ./cmd/verify/gen`).
+// Fixture sets are searched in this order: data/fixtures/live-*/ (real
+// captures), then data/fixtures/synthetic/ (invented data, see
+// internal/fixturegen; regenerate with `go run ./cmd/verify/gen`).
 package main
 
 import (
@@ -31,7 +31,7 @@ import (
 
 func main() {
 	var (
-		fixtures = flag.String("fixtures", "evidence/fixtures", "directory holding the fixture sets")
+		fixtures = flag.String("fixtures", "data/fixtures", "directory holding the fixture sets")
 		capture  = flag.Bool("capture", false, "perform one LIVE round against ARGUS_RPC_URLS and save it as a fixture set")
 		out      = flag.String("out", "", "with -capture: output directory; {block} is replaced by the block height (default <fixtures>/live-{block})")
 		rpcURLs  = flag.String("rpc", "", "with -capture: comma-separated RPC URLs (default ARGUS_RPC_URLS); only the first is used so the recording has one provider")

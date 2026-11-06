@@ -1,8 +1,3 @@
-// Command 04-events is capability check 4 (PRD section 7): does FastNEAR's
-// neardata service give us recent blocks without a key, including receipt
-// execution outcomes with logs, and do intents.near EVENT_JSON logs parse?
-//
-// Run: go run ./checks/04-events [-blocks 100] [-base https://mainnet.neardata.xyz]
 package main
 
 import (
@@ -14,14 +9,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/emma31-dev/argus/checks/internal/checkutil"
 )
 
 const eventPrefix = "EVENT_JSON:"
 
-// block is the part of the neardata block response this check reads.
-type block struct {
+// neardataBlock is the slice of the neardata block response this probe reads.
+type neardataBlock struct {
 	Block struct {
 		Header struct {
 			Height uint64 `json:"height"`
@@ -41,48 +34,49 @@ type block struct {
 	} `json:"shards"`
 }
 
-type event struct {
+type neardataEvent struct {
 	Standard string          `json:"standard"`
 	Version  string          `json:"version"`
 	Event    string          `json:"event"`
 	Data     json.RawMessage `json:"data"`
 }
 
-func main() {
-	n := flag.Int("blocks", 100, "number of recent blocks to fetch")
-	base := flag.String("base", "https://mainnet.neardata.xyz", "neardata base URL")
-	delay := flag.Duration("delay", 150*time.Millisecond, "pause between requests")
-	flag.Parse()
+func runEvents(args []string) {
+	fs := flag.NewFlagSet("events", flag.ExitOnError)
+	n := fs.Int("blocks", 100, "number of recent blocks to fetch")
+	base := fs.String("base", "https://mainnet.neardata.xyz", "neardata base URL")
+	delay := fs.Duration("delay", 150*time.Millisecond, "pause between requests")
+	_ = fs.Parse(args)
 
-	env, err := checkutil.New("04-events", nil)
+	s, err := newSession("events", nil)
 	if err != nil {
-		checkutil.Fatalf("04-events", "setup: %v", err)
+		die("events", "setup: %v", err)
 	}
-	ctx, cancel := checkutil.Context(15 * time.Minute)
+	ctx, cancel := withTimeout(15 * time.Minute)
 	defer cancel()
 	hc := &http.Client{Timeout: 30 * time.Second}
 
 	// /v0/last_block/final redirects to /v0/block/<height>.
-	body, status, err := get(ctx, hc, *base+"/v0/last_block/final")
+	body, status, err := httpGet(ctx, hc, *base+"/v0/last_block/final")
 	if err != nil {
-		env.Fail("GET last_block/final: %v", err)
-		env.NetworkHint(err)
-		env.Exit()
+		s.fail("GET last_block/final: %v", err)
+		s.netHint(err)
+		s.finish()
 		return
 	}
 	if status != http.StatusOK {
-		env.Fail("GET last_block/final: HTTP %d (a key or payment may be required): %.200s", status, body)
-		env.Exit()
+		s.fail("GET last_block/final: HTTP %d (a key or payment may be required): %.200s", status, body)
+		s.finish()
 		return
 	}
-	var latest block
+	var latest neardataBlock
 	if err := json.Unmarshal(body, &latest); err != nil || latest.Block.Header.Height == 0 {
-		env.Fail("cannot parse latest block: %v", err)
-		env.Exit()
+		s.fail("cannot parse latest block: %v", err)
+		s.finish()
 		return
 	}
-	env.Pass("no key needed: HTTP 200 for the latest final block %d", latest.Block.Header.Height)
-	env.Save("sample-block-latest.json", json.RawMessage(body))
+	s.ok("no key needed: HTTP 200 for the latest final block %d", latest.Block.Header.Height)
+	s.save("sample-block-latest.json", json.RawMessage(body))
 
 	var (
 		fetched, nullBlocks, outcomes, withLogs, intentsOutcomes, eventLogs, intentsEvents int
@@ -92,23 +86,23 @@ func main() {
 	var samples []map[string]any
 	for i := 0; i < *n; i++ {
 		h := latest.Block.Header.Height - uint64(i)
-		raw, status, err := get(ctx, hc, fmt.Sprintf("%s/v0/block/%d", *base, h))
+		raw, status, err := httpGet(ctx, hc, fmt.Sprintf("%s/v0/block/%d", *base, h))
 		if err != nil {
-			env.Fail("GET block %d: %v", h, err)
-			env.NetworkHint(err)
+			s.fail("GET block %d: %v", h, err)
+			s.netHint(err)
 			break
 		}
 		if status != http.StatusOK {
-			env.Fail("GET block %d: HTTP %d: %.200s", h, status, raw)
+			s.fail("GET block %d: HTTP %d: %.200s", h, status, raw)
 			break
 		}
 		if strings.TrimSpace(string(raw)) == "null" {
 			nullBlocks++ // skipped height
 			continue
 		}
-		var b block
+		var b neardataBlock
 		if err := json.Unmarshal(raw, &b); err != nil {
-			env.Fail("block %d: undecodable: %v", h, err)
+			s.fail("block %d: undecodable: %v", h, err)
 			break
 		}
 		fetched++
@@ -128,9 +122,9 @@ func main() {
 						continue
 					}
 					eventLogs++
-					var ev event
+					var ev neardataEvent
 					if err := json.Unmarshal([]byte(strings.TrimPrefix(l, eventPrefix)), &ev); err != nil {
-						env.Fail("block %d receipt %s: EVENT_JSON does not parse: %v", h, o.ExecutionOutcome.ID, err)
+						s.fail("block %d receipt %s: EVENT_JSON does not parse: %v", h, o.ExecutionOutcome.ID, err)
 						continue
 					}
 					intentsEvents++
@@ -143,15 +137,15 @@ func main() {
 			}
 		}
 		if hasIntentsEvent && !saved {
-			env.Save(fmt.Sprintf("sample-block-%d-with-intents-events.json", h), json.RawMessage(raw))
+			s.save(fmt.Sprintf("sample-block-%d-with-intents-events.json", h), json.RawMessage(raw))
 			saved = true
 		}
 		time.Sleep(*delay)
 	}
 
-	env.Info("fetched %d blocks (%d skipped heights), %d receipt outcomes, %d with logs", fetched, nullBlocks, outcomes, withLogs)
-	env.Info("intents.near: %d outcomes, %d EVENT_JSON logs, %d parsed; kinds: %v", intentsOutcomes, eventLogs, intentsEvents, eventNames)
-	env.Save("summary.json", map[string]any{
+	s.note("fetched %d blocks (%d skipped heights), %d receipt outcomes, %d with logs", fetched, nullBlocks, outcomes, withLogs)
+	s.note("intents.near: %d outcomes, %d EVENT_JSON logs, %d parsed; kinds: %v", intentsOutcomes, eventLogs, intentsEvents, eventNames)
+	s.save("summary.json", map[string]any{
 		"base": *base, "blocks_requested": *n, "blocks_fetched": fetched, "skipped_heights": nullBlocks,
 		"receipt_outcomes": outcomes, "outcomes_with_logs": withLogs, "intents_outcomes": intentsOutcomes,
 		"intents_event_logs": eventLogs, "intents_events_parsed": intentsEvents, "event_kinds": eventNames,
@@ -160,23 +154,23 @@ func main() {
 
 	switch {
 	case fetched == 0:
-		env.Fail("no blocks fetched")
+		s.fail("no blocks fetched")
 	case outcomes == 0:
-		env.Fail("blocks contain no receipt_execution_outcomes")
+		s.fail("blocks contain no receipt_execution_outcomes")
 	case withLogs == 0:
-		env.Fail("receipt outcomes carry no logs in %d blocks (unexpected)", fetched)
+		s.fail("receipt outcomes carry no logs in %d blocks (unexpected)", fetched)
 	default:
-		env.Pass("receipt execution outcomes with logs are included (%d of %d outcomes have logs)", withLogs, outcomes)
+		s.ok("receipt execution outcomes with logs are included (%d of %d outcomes have logs)", withLogs, outcomes)
 	}
 	if intentsEvents > 0 {
-		env.Pass("parsed %d intents.near EVENT_JSON events", intentsEvents)
+		s.ok("parsed %d intents.near EVENT_JSON events", intentsEvents)
 	} else {
-		env.Info("no intents.near events in this window (quiet period?): re-run with a larger -blocks to see some")
+		s.note("no intents.near events in this window (quiet period?): try a larger -blocks")
 	}
-	env.Exit()
+	s.finish()
 }
 
-func get(ctx context.Context, hc *http.Client, url string) ([]byte, int, error) {
+func httpGet(ctx context.Context, hc *http.Client, url string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, err

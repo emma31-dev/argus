@@ -1,7 +1,7 @@
 // Package rpctest replays recorded NEAR JSON-RPC exchanges.
 //
 // Exchanges are the files written by rpc.WithRecorder (see
-// checks/internal/checkutil and cmd/verify -capture):
+// cmd/probe and cmd/verify -capture):
 //
 //	{"provider": "...", "request": {<JSON-RPC request>}, "response": {<JSON-RPC response>}}
 //

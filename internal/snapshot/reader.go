@@ -15,7 +15,7 @@ import (
 )
 
 // ErrOwedUnsupported means intents.near has no mt_batch_supply view method,
-// so owed must be derived from mint/burn events instead (PRD 5.4/7.1).
+// so owed must be derived from mint/burn events instead.
 var ErrOwedUnsupported = errors.New("snapshot: mt_batch_supply not supported by the contract")
 
 // Defaults for Reader.

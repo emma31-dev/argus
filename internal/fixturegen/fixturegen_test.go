@@ -19,7 +19,7 @@ func TestDeterministic(t *testing.T) {
 }
 
 func TestCommittedSetIsUpToDate(t *testing.T) {
-	committed := filepath.Join("..", "..", "evidence", "fixtures", "synthetic")
+	committed := filepath.Join("..", "..", "data", "fixtures", "synthetic")
 	if _, err := os.Stat(committed); err != nil {
 		t.Skip("committed synthetic set not present")
 	}

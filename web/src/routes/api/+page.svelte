@@ -167,7 +167,7 @@
 			id: 'replay',
 			path: '/v1/replay',
 			title: 'October 2026 replay',
-			desc: 'The incident replay result, loaded from evidence/replay-2026-10-01.json. Returns 404 {"error":"replay not available"} until that file exists.',
+			desc: 'The incident replay result, loaded from data/replay/2026-10-01.json. Returns 404 {"error":"replay not available"} until that file exists.',
 			tryPath: '/v1/replay'
 		},
 		{

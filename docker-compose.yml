@@ -58,7 +58,7 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      - ./evidence:/app/evidence:ro
+      - ./data:/app/data:ro
       - ./config:/app/config:ro
     healthcheck:
       # distroless has no shell, curl or wget, so the binary checks itself.

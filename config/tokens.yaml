@@ -1,4 +1,4 @@
-# Fallback token list for Argus discovery (PRD 5.1, last resort).
+# Fallback token list for Argus discovery (last resort).
 #
 # Used only when both intents.near mt_tokens enumeration and the 1Click
 # supported-tokens API (https://1click.chaindefuser.com/v0/tokens) are
@@ -10,7 +10,7 @@
 # defuse-protocol/defuse-frontend@594085d src/tokens/production.json
 # (2026-10-06), picked by trading-volume rank. See docs/research.md section 5.3.
 # Decimals are the NEAR-side token's own (smallest unit = 10^-decimals);
-# capability check 2 should confirm each one against ft_metadata.
+# `go run ./cmd/probe held` should confirm each one against ft_metadata.
 #
 # held(T): nep141 -> <contract>.ft_balance_of(intents.near)
 #          nep245 -> <contract>.mt_balance_of(intents.near, <inner_id>)

@@ -84,7 +84,7 @@ func NewApp(cfg Config, log *slog.Logger, repo *store.Repo, client *rpc.Client, 
 	return a
 }
 
-// buildDiscoverer assembles the PRD 5.1 chain: enumeration, 1Click, config.
+// buildDiscoverer assembles the discovery chain: enumeration, 1Click, config.
 func buildDiscoverer(cfg Config, c tokens.Caller) tokens.Discoverer {
 	chain := &tokens.Chain{
 		Enumeration: &tokens.Enumeration{Caller: c, Account: cfg.IntentsAccount},
@@ -293,7 +293,7 @@ func (a *App) RunRound(ctx context.Context) error {
 		}
 		if errors.Is(err, snapshot.ErrOwedUnsupported) {
 			a.log.Error("intents contract has no mt_batch_supply; all tokens marked stale. "+
-				"The event-delta fallback for owed (PRD 5.4) is NOT implemented because the contract source "+
+				"The event-delta fallback for owed is NOT implemented because the contract source "+
 				"confirms mt_batch_supply exists, so this is an unexpected state: check ARGUS_INTENTS_ACCOUNT and the RPC provider",
 				"account", a.cfg.IntentsAccount, "err", err)
 		} else {
