@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: all three Go binaries, static and stripped ----
-FROM golang:1.23-alpine AS builder
+FROM golang:1.27-alpine AS builder
 ENV GOTOOLCHAIN=local \
     CGO_ENABLED=0
 WORKDIR /src
