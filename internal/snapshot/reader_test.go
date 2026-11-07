@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -385,5 +386,193 @@ func TestRoundNEP245Held(t *testing.T) {
 	res, err := (&Reader{Caller: f}).Round(context.Background(), []model.Token{tok})
 	if err != nil || len(res.Snapshots) != 1 || res.Snapshots[0].Gap != "2" {
 		t.Fatalf("%v %+v", err, res)
+	}
+}
+
+func mt245(contract string, n int) []model.Token {
+	out := make([]model.Token, n)
+	for i := range out {
+		inner := fmt.Sprintf("t%d", i)
+		out[i] = model.Token{TokenID: "nep245:" + contract + ":" + inner, Standard: model.StandardNEP245, Contract: contract, InnerID: inner}
+	}
+	return out
+}
+
+func mtHandler(batch func(c call) ([]byte, error)) func(call) ([]byte, error) {
+	return func(c call) ([]byte, error) {
+		switch c.method {
+		case "mt_batch_supply":
+			ids := c.args.(map[string]any)["token_ids"].([]string)
+			vals := make([]string, len(ids))
+			for i := range vals {
+				vals[i] = "100"
+			}
+			return json.Marshal(vals)
+		case "ft_balance_of", "mt_balance_of":
+			return []byte(`"100"`), nil
+		case "mt_batch_balance_of":
+			return batch(c)
+		}
+		return nil, fmt.Errorf("unexpected method %s", c.method)
+	}
+}
+
+func batchEcho(c call) ([]byte, error) {
+	ids := c.args.(map[string]any)["token_ids"].([]string)
+	vals := make([]string, len(ids))
+	for i := range vals {
+		vals[i] = "100"
+	}
+	return json.Marshal(vals)
+}
+
+func TestRoundBatchesNEP245HeldPerContract(t *testing.T) {
+	toks := append(append(mkTokens(3), mt245("big.near", 120)...), mt245("small.near", 2)...)
+	f := newFake(mtHandler(batchEcho))
+	res, err := (&Reader{Caller: f}).Round(context.Background(), toks)
+	if err != nil || len(res.Snapshots) != len(toks) || len(res.Errors) != 0 {
+		t.Fatalf("%v snaps=%d errs=%v", err, len(res.Snapshots), res.Errors)
+	}
+	sizes := map[string][]int{}
+	for _, c := range f.callsTo("mt_batch_balance_of") {
+		a := c.args.(map[string]any)
+		if a["account_id"] != "intents.near" {
+			t.Fatalf("holder %v", a["account_id"])
+		}
+		sizes[c.account] = append(sizes[c.account], len(a["token_ids"].([]string)))
+	}
+	slices.SortFunc(sizes["big.near"], func(a, b int) int { return b - a }) // workers finish in any order
+	if fmt.Sprint(sizes["big.near"]) != "[50 50 20]" || fmt.Sprint(sizes["small.near"]) != "[2]" {
+		t.Fatalf("batch sizes %v", sizes)
+	}
+	if n := len(f.callsTo("mt_balance_of")); n != 0 {
+		t.Fatalf("%d single mt_balance_of calls, want 0", n)
+	}
+	if n := len(f.callsTo("ft_balance_of")); n != 3 {
+		t.Fatalf("%d ft_balance_of calls, want 3", n)
+	}
+}
+
+func TestRoundBatchedHeldKeepsOrderAndValues(t *testing.T) {
+	toks := mt245("mt.near", 3)
+	f := newFake(mtHandler(func(c call) ([]byte, error) { return []byte(`["100","90","130"]`), nil }))
+	res, err := (&Reader{Caller: f}).Round(context.Background(), toks)
+	if err != nil || len(res.Snapshots) != 3 {
+		t.Fatalf("%v %+v", err, res)
+	}
+	gaps := map[string]string{}
+	for _, s := range res.Snapshots {
+		gaps[s.TokenID] = s.Gap
+	}
+	if gaps["nep245:mt.near:t0"] != "0" || gaps["nep245:mt.near:t1"] != "-10" || gaps["nep245:mt.near:t2"] != "30" {
+		t.Fatalf("gaps %v", gaps)
+	}
+}
+
+func TestRoundFailedBatchFallsBackToSingleReads(t *testing.T) {
+	toks := mt245("mt.near", 4)
+	f := newFake(func(c call) ([]byte, error) {
+		if c.method == "mt_balance_of" && c.args.(map[string]string)["token_id"] == "t2" {
+			return nil, &rpc.Error{Kind: rpc.ErrContractPanic, Message: "bad token"}
+		}
+		return mtHandler(func(call) ([]byte, error) {
+			return nil, &rpc.Error{Kind: rpc.ErrContractPanic, Message: "batch panics"}
+		})(c)
+	})
+	res, err := (&Reader{Caller: f}).Round(context.Background(), toks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Snapshots) != 3 || len(res.Errors) != 1 || res.Errors[0].TokenID != "nep245:mt.near:t2" {
+		t.Fatalf("snaps=%d errs=%v", len(res.Snapshots), res.Errors)
+	}
+	if n := len(f.callsTo("mt_balance_of")); n != 4 {
+		t.Fatalf("%d single reads, want 4", n)
+	}
+}
+
+func TestRoundWrongShapeBatchFallsBackToSingleReads(t *testing.T) {
+	f := newFake(mtHandler(func(call) ([]byte, error) { return []byte(`["100"]`), nil }))
+	res, err := (&Reader{Caller: f}).Round(context.Background(), mt245("mt.near", 3))
+	if err != nil || len(res.Snapshots) != 3 || len(res.Errors) != 0 {
+		t.Fatalf("%v snaps=%d errs=%v", err, len(res.Snapshots), res.Errors)
+	}
+	if n := len(f.callsTo("mt_balance_of")); n != 3 {
+		t.Fatalf("%d single reads, want 3", n)
+	}
+}
+
+func TestRoundBatchProviderFailureRetriesWholeRound(t *testing.T) {
+	f := newFake(mtHandler(func(c call) ([]byte, error) {
+		if c.provider == "p0" {
+			return nil, &rpc.Error{Provider: "p0", Kind: rpc.ErrProviderUnavailable}
+		}
+		return batchEcho(c)
+	}))
+	res, err := (&Reader{Caller: f}).Round(context.Background(), mt245("mt.near", 5))
+	if err != nil || res.Provider != "p1" || len(res.Snapshots) != 5 {
+		t.Fatalf("%v provider=%s snaps=%d", err, res.Provider, len(res.Snapshots))
+	}
+	if n := len(f.callsTo("mt_balance_of")); n != 0 {
+		t.Fatalf("provider failure must not fall back to single reads, got %d", n)
+	}
+}
+
+func rateLimitErr(provider string) error {
+	return &rpc.Error{Provider: provider, Method: "query", Kind: rpc.ErrProviderUnavailable, Code: "HTTP_429", Message: "slow down"}
+}
+
+func TestRoundRateLimitedTokenIsStaleNotAFailedRound(t *testing.T) {
+	f := newFake(func(c call) ([]byte, error) {
+		if c.method == "ft_balance_of" && c.account == "tok3.near" {
+			return nil, rateLimitErr(c.provider)
+		}
+		return okHandler(func(string) (string, error) { return "20000", nil })(c)
+	})
+	res, err := (&Reader{Caller: f, Concurrency: 2}).Round(context.Background(), mkTokens(30))
+	if err != nil {
+		t.Fatalf("one rate-limited read must not fail the round: %v", err)
+	}
+	if res.Provider != "p0" || len(res.Snapshots) != 29 || len(res.Errors) != 1 || res.Errors[0].TokenID != "nep141:tok3.near" {
+		t.Fatalf("provider=%s snaps=%d errs=%v", res.Provider, len(res.Snapshots), res.Errors)
+	}
+	if !rpc.IsRateLimited(res.Errors[0].Err) {
+		t.Fatalf("error should say why: %v", res.Errors[0].Err)
+	}
+	for _, c := range f.callsTo("mt_batch_supply") {
+		if c.provider != "p0" {
+			t.Fatalf("round was retried on %s", c.provider)
+		}
+	}
+}
+
+func TestRoundMostlyRateLimitedProviderIsAbandoned(t *testing.T) {
+	f := newFake(func(c call) ([]byte, error) {
+		if c.provider == "p0" && c.method == "ft_balance_of" {
+			return nil, rateLimitErr("p0")
+		}
+		return okHandler(func(string) (string, error) { return "20000", nil })(c)
+	})
+	res, err := (&Reader{Caller: f, Concurrency: 2}).Round(context.Background(), mkTokens(40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Provider != "p1" || len(res.Snapshots) != 40 || len(res.Errors) != 0 {
+		t.Fatalf("provider=%s snaps=%d errs=%v", res.Provider, len(res.Snapshots), res.Errors)
+	}
+}
+
+func TestRoundRateLimitedBatchMarksItsTokensStale(t *testing.T) {
+	toks := append(mkTokens(2), mt245("mt.near", 3)...)
+	f := newFake(mtHandler(func(c call) ([]byte, error) { return nil, rateLimitErr(c.provider) }))
+	res, err := (&Reader{Caller: f}).Round(context.Background(), toks)
+	if err != nil || res.Provider != "p0" {
+		t.Fatalf("%v provider=%s", err, res.Provider)
+	}
+	if len(res.Snapshots) != 2 || len(res.Errors) != 3 {
+		t.Fatalf("snaps=%d errs=%v", len(res.Snapshots), res.Errors)
+	}
+	if n := len(f.callsTo("mt_balance_of")); n != 0 {
+		t.Fatalf("a rate-limited batch must not fan out into single reads, got %d", n)
 	}
 }

@@ -18,7 +18,8 @@ func HeldMethod(t model.Token) (contract, method string, args any) {
 //	nep245: <contract>.mt_balance_of({"account_id": holder, "token_id": inner})
 //
 // Both return the balance as a decimal string. For out-of-scope standards
-// (nep171) it returns an empty contract and method.
+// (nep171) it returns an empty contract and method. NEP-245 tokens of one
+// contract can be read together with HeldBatchMethodFor.
 func HeldMethodFor(holder string, t model.Token) (contract, method string, args any) {
 	switch t.Standard {
 	case model.StandardNEP141:
@@ -28,4 +29,14 @@ func HeldMethodFor(holder string, t model.Token) (contract, method string, args 
 	default:
 		return "", "", nil
 	}
+}
+
+// HeldBatchMethodFor returns the view method and JSON arguments that read the
+// balances holder owns for several NEP-245 inner ids of one contract:
+//
+//	<contract>.mt_batch_balance_of({"account_id": holder, "token_ids": [inner...]})
+//
+// The result is an array of decimal strings in the order of innerIDs.
+func HeldBatchMethodFor(holder string, innerIDs []string) (method string, args any) {
+	return "mt_batch_balance_of", map[string]any{"account_id": holder, "token_ids": innerIDs}
 }

@@ -38,6 +38,27 @@ func TestDiscoverScopedFiltersOutOfScope(t *testing.T) {
 	}
 }
 
+func TestRoundTimeoutScalesWithTokensAndRate(t *testing.T) {
+	mk := func(n int, rps float64) *App {
+		a := &App{cfg: Config{Interval: 30 * time.Second, RPCRPS: rps, BatchSize: 50}}
+		for i := 0; i < n; i++ {
+			a.toks = append(a.toks, model.Token{TokenID: "nep141:t" + strings.Repeat("x", i%3) + ".near"})
+		}
+		return a
+	}
+	if got := mk(10, 5).roundTimeout(); got != 2*time.Minute {
+		t.Errorf("small list: %v, want the 2m floor", got)
+	}
+	// 724 tokens at 5 requests a second is about 2.5 minutes of calls; the
+	// round needs more than the fixed 2 minutes it used to get.
+	if got := mk(724, 5).roundTimeout(); got < 3*time.Minute {
+		t.Errorf("724 tokens at 5 rps: %v, want at least 3m", got)
+	}
+	if got := mk(724, 0).roundTimeout(); got != 2*time.Minute {
+		t.Errorf("unlimited rate: %v, want the floor", got)
+	}
+}
+
 func TestHealthcheck(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/healthz" {

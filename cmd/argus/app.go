@@ -337,15 +337,30 @@ func (a *App) markAllStale(ctx context.Context, toks []model.Token, cause error)
 	a.relay.Wake()
 }
 
+// roundTimeout is how long one round may run. A round pins every call to one
+// provider, so its length is roughly calls / RPCRPS, and a NEP-141 token costs
+// a call of its own. The allowance is 1.5x that estimate so retries still
+// fit, never less than 3 intervals or 2 minutes. A fixed timeout would make
+// a round with many tokens fail every time at a low request rate.
+func (a *App) roundTimeout() time.Duration {
+	floor := max(3*a.cfg.Interval, 2*time.Minute)
+	if a.cfg.RPCRPS <= 0 {
+		return floor
+	}
+	n := len(a.Tokens())
+	calls := float64(n + n/max(a.cfg.BatchSize, 1) + 1)
+	need := time.Duration(calls / a.cfg.RPCRPS * 1.5 * float64(time.Second))
+	return max(floor, need)
+}
+
 // snapshotLoop runs a round every Interval until ctx ends. Rounds never
 // overlap; when one overruns, the ticks that elapsed are skipped.
 func (a *App) snapshotLoop(ctx context.Context) {
 	t := time.NewTicker(a.cfg.Interval)
 	defer t.Stop()
-	roundTimeout := max(3*a.cfg.Interval, 2*time.Minute)
 	for {
 		start := time.Now()
-		rctx, cancel := context.WithTimeout(ctx, roundTimeout)
+		rctx, cancel := context.WithTimeout(ctx, a.roundTimeout())
 		err := a.RunRound(rctx)
 		cancel()
 		if err != nil && ctx.Err() == nil && !errors.Is(err, snapshot.ErrOwedUnsupported) {

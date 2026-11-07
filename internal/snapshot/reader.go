@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emma31-dev/argus/internal/model"
@@ -22,6 +23,10 @@ var ErrOwedUnsupported = errors.New("snapshot: mt_batch_supply not supported by 
 const (
 	DefaultBatchSize   = 50
 	DefaultConcurrency = 8
+
+	// minRateLimitBudget is the fewest rate-limited reads a round tolerates
+	// before giving up on its provider (it is 20% of the reads for big rounds).
+	minRateLimitBudget = 5
 )
 
 // Caller is the part of the RPC client the Reader needs. *rpc.Client
@@ -128,52 +133,63 @@ func (r *Reader) attempt(ctx context.Context, toks []model.Token, only string) (
 	res := Result{Block: blk, Provider: provider}
 	res.Errors = append(res.Errors, tokErrs...)
 
-	type job struct {
-		idx int
-		tok model.Token
-	}
-	type out struct {
-		idx  int
-		held string
-		err  error
-	}
-	var jobs []job
+	var jobs []heldJob
 	for i, t := range toks {
 		if _, ok := owed[t.TokenID]; ok {
-			jobs = append(jobs, job{i, t})
+			jobs = append(jobs, heldJob{i, t})
 		}
 	}
+	units := r.heldUnits(jobs)
 	workers := r.Concurrency
 	if workers <= 0 {
 		workers = DefaultConcurrency
 	}
-	if workers > len(jobs) {
-		workers = len(jobs)
+	if workers > len(units) {
+		workers = len(units)
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	jobCh := make(chan job)
-	outCh := make(chan out, len(jobs))
+	unitCh := make(chan []heldJob)
+	outCh := make(chan heldOut, len(jobs))
 	var wg sync.WaitGroup
 	account := r.account()
+	// A 429 that outlasted the client's retries only costs that token its
+	// read: no wrong data was returned and nothing was mixed across
+	// providers. Past rateLimitBudget the provider is treated as failed.
+	var rateLimited atomic.Int32
+	rateLimitBudget := int32(max(minRateLimitBudget, len(units)/5))
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := range jobCh {
-				held, err := r.readHeld(cctx, account, provider, blk.Height, j.tok)
-				if err != nil && rpc.IsProviderFailure(err) {
+			for u := range unitCh {
+				outs := r.readHeldUnit(cctx, account, provider, blk.Height, u)
+				var failure error
+				for _, o := range outs {
+					if o.err != nil && rpc.IsProviderFailure(o.err) {
+						failure = o.err
+						break
+					}
+				}
+				fatal := failure != nil
+				if fatal && rpc.IsRateLimited(failure) && rateLimited.Add(1) <= rateLimitBudget {
+					fatal = false
+				}
+				if fatal {
 					cancel() // abandon the round; it will be retried elsewhere
 				}
-				outCh <- out{j.idx, held, err}
+				for _, o := range outs {
+					o.fatal = fatal && o.err != nil && rpc.IsProviderFailure(o.err)
+					outCh <- o
+				}
 			}
 		}()
 	}
 	go func() {
-		defer close(jobCh)
-		for _, j := range jobs {
+		defer close(unitCh)
+		for _, u := range units {
 			select {
-			case jobCh <- j:
+			case unitCh <- u:
 			case <-cctx.Done():
 				return
 			}
@@ -182,10 +198,10 @@ func (r *Reader) attempt(ctx context.Context, toks []model.Token, only string) (
 	wg.Wait()
 	close(outCh)
 
-	heldByIdx := map[int]out{}
+	heldByIdx := map[int]heldOut{}
 	var providerErr error
 	for o := range outCh {
-		if o.err != nil && rpc.IsProviderFailure(o.err) && providerErr == nil {
+		if o.fatal && providerErr == nil {
 			providerErr = o.err
 		}
 		heldByIdx[o.idx] = o
@@ -215,6 +231,97 @@ func (r *Reader) attempt(ctx context.Context, toks []model.Token, only string) (
 		})
 	}
 	return res, provider, nil
+}
+
+// heldJob is one token to read, with its position in the round's token list.
+type heldJob struct {
+	idx int
+	tok model.Token
+}
+
+// heldOut is the held balance (or failure) of one token. fatal marks a
+// provider failure that abandons the round.
+type heldOut struct {
+	idx   int
+	held  string
+	err   error
+	fatal bool
+}
+
+// heldUnits groups jobs into the RPC work items of a round. NEP-141 tokens
+// each need their own call (every token has its own contract). NEP-245 tokens
+// of the same contract share one mt_batch_balance_of call per BatchSize
+// tokens, which turns hundreds of calls into a handful on mainnet.
+func (r *Reader) heldUnits(jobs []heldJob) [][]heldJob {
+	size := r.BatchSize
+	if size <= 0 {
+		size = DefaultBatchSize
+	}
+	var units [][]heldJob
+	byContract := map[string][]heldJob{}
+	var order []string
+	for _, j := range jobs {
+		if j.tok.Standard != model.StandardNEP245 {
+			units = append(units, []heldJob{j})
+			continue
+		}
+		if _, seen := byContract[j.tok.Contract]; !seen {
+			order = append(order, j.tok.Contract)
+		}
+		byContract[j.tok.Contract] = append(byContract[j.tok.Contract], j)
+	}
+	for _, c := range order {
+		js := byContract[c]
+		for start := 0; start < len(js); start += size {
+			units = append(units, js[start:min(start+size, len(js))])
+		}
+	}
+	return units
+}
+
+// readHeldUnit reads every token of one unit. A batch that fails for a
+// reason other than the provider (the contract lacks the method, or panics on
+// one id) or that answers with the wrong shape is retried token by token, so
+// one bad token cannot hide the rest of its batch. A provider failure is
+// reported for every token and abandons the round.
+func (r *Reader) readHeldUnit(ctx context.Context, account, provider string, height uint64, unit []heldJob) []heldOut {
+	single := func() []heldOut {
+		outs := make([]heldOut, 0, len(unit))
+		for _, j := range unit {
+			held, err := r.readHeld(ctx, account, provider, height, j.tok)
+			outs = append(outs, heldOut{idx: j.idx, held: held, err: err})
+		}
+		return outs
+	}
+	if len(unit) == 1 {
+		return single()
+	}
+	inner := make([]string, len(unit))
+	for i, j := range unit {
+		inner[i] = j.tok.InnerID
+	}
+	method, args := tokens.HeldBatchMethodFor(account, inner)
+	raw, err := r.Caller.CallFunction(ctx, provider, unit[0].tok.Contract, method, args, height)
+	if err != nil {
+		if rpc.IsProviderFailure(err) || ctx.Err() != nil {
+			outs := make([]heldOut, len(unit))
+			for i, j := range unit {
+				outs[i] = heldOut{idx: j.idx, err: err}
+			}
+			return outs
+		}
+		return single()
+	}
+	var vals []json.RawMessage
+	if json.Unmarshal(raw, &vals) != nil || len(vals) != len(unit) {
+		return single()
+	}
+	outs := make([]heldOut, len(unit))
+	for i, j := range unit {
+		held, err := parseAmount(vals[i])
+		outs[i] = heldOut{idx: j.idx, held: held, err: err}
+	}
+	return outs
 }
 
 func (r *Reader) account() string {

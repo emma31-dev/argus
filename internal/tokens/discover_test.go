@@ -200,18 +200,43 @@ func TestEnumeration(t *testing.T) {
 	fc := &fakeCaller{pages: map[int][]string{
 		0: {"nep141:a.near", "nep141:b.near"},
 		2: {"nep245:mt.near:1", "nep171:nft.near:1"}, // nft skipped
-		4: {"imt:m.near:x"},                          // unsupported skipped, short page ends loop
+		4: {"imt:m.near:x"},                          // unsupported skipped
 	}}
 	e := &Enumeration{Caller: fc, PageSize: 2}
 	ts, err := e.Fetch(context.Background())
 	if err != nil || len(ts) != 3 {
 		t.Fatalf("%v %v", ts, err)
 	}
-	if len(fc.args) != 3 || fc.args[1]["from_index"] != "2" || fc.args[1]["limit"] != 2 {
+	// Three pages with data, then the empty page that ends the loop.
+	if len(fc.args) != 4 || fc.args[1]["from_index"] != "2" || fc.args[1]["limit"] != 2 || fc.args[3]["from_index"] != "5" {
 		t.Fatalf("args %v", fc.args)
 	}
 	if ts[2].Source != "enumeration" {
 		t.Fatalf("%+v", ts[2])
+	}
+}
+
+func TestEnumerationDefaultPage(t *testing.T) {
+	fc := &fakeCaller{pages: map[int][]string{0: {"nep141:a.near"}}}
+	if _, err := (&Enumeration{Caller: fc}).Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fc.args[0]["limit"] != 5000 {
+		t.Fatalf("default limit = %v", fc.args[0]["limit"])
+	}
+}
+
+// A provider that caps limit below what was asked returns short pages while
+// more remain. Every page must still be read.
+func TestEnumerationSurvivesCappedPages(t *testing.T) {
+	fc := &fakeCaller{pages: map[int][]string{
+		0: {"nep141:a.near", "nep141:b.near"},
+		2: {"nep141:c.near", "nep141:d.near"},
+		4: {"nep245:mt.near:1"},
+	}}
+	ts, err := (&Enumeration{Caller: fc, PageSize: 100}).Fetch(context.Background())
+	if err != nil || len(ts) != 5 {
+		t.Fatalf("got %d tokens, err %v", len(ts), err)
 	}
 }
 

@@ -17,10 +17,14 @@ type Caller interface {
 	CallFunction(ctx context.Context, provider, account, method string, args any, blockHeight uint64) ([]byte, error)
 }
 
-const defaultEnumPage = 100
+// defaultEnumPage is large on purpose. intents.near lists every token with a
+// non-zero supply, and on mainnet nearly all of the ~88k entries are NFTs
+// (nep171) that Argus drops. Small pages would cost hundreds of RPC calls per
+// discovery; 5000 is also what the Intents team's own listing script uses.
+const defaultEnumPage = 5000
 
 // maxEnumPages bounds pagination so a misbehaving node cannot loop us forever.
-const maxEnumPages = 1000
+const maxEnumPages = 200
 
 // Enumeration lists tokens through NEP-245 enumeration on the Intents
 // contract:
@@ -30,11 +34,13 @@ const maxEnumPages = 1000
 //
 // (contracts/defuse/src/contract/tokens/nep245/enumeration.rs in
 // github.com/near/intents iterates total_supplies.) Pages are read from one
-// provider at one block so the list is consistent.
+// provider at one block so the list is consistent. Paging ends on an empty
+// page, not a short one, so a provider that caps limit cannot silently
+// truncate the list.
 type Enumeration struct {
 	Caller   Caller
 	Account  string // defaults to DefaultIntentsAccount
-	PageSize int    // defaults to 100
+	PageSize int    // defaults to 5000
 }
 
 // Name implements Source.
@@ -78,7 +84,7 @@ func (e *Enumeration) Fetch(ctx context.Context) ([]model.Token, error) {
 				out = append(out, t)
 			}
 		}
-		if len(items) < page {
+		if len(items) == 0 {
 			return out, nil
 		}
 		from += len(items)
