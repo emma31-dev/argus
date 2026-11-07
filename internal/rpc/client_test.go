@@ -365,3 +365,108 @@ func TestClientRateLimitWaits(t *testing.T) {
 		t.Fatalf("waits %v", rs.ds)
 	}
 }
+
+func TestRetryAfterParsing(t *testing.T) {
+	hdr := func(v string) http.Header { h := http.Header{}; h.Set("Retry-After", v); return h }
+	for _, tc := range []struct {
+		name string
+		h    http.Header
+		body string
+		want time.Duration
+	}{
+		{"header", hdr("7"), "", 7 * time.Second},
+		{"body text", http.Header{}, `Rate limit exceeded, retry after 12 seconds`, 12 * time.Second},
+		{"nothing said", http.Header{}, `Rate limits exceeded`, defaultCooldown},
+		{"bad header falls to body", hdr("soon"), `retry after 5 seconds`, 5 * time.Second},
+		{"capped", hdr("600"), "", maxCooldown},
+	} {
+		if got := retryAfter(tc.h, []byte(tc.body)); got != tc.want {
+			t.Errorf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestPinnedCallWaitsOutRateLimit(t *testing.T) {
+	var hits atomic.Int32
+	s := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) <= 3 {
+			w.Header().Set("Retry-After", "3")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write(callResult(`1`))
+	})
+	rs := &recSleep{}
+	now := time.Unix(9000, 0)
+	c := New([]Provider{{Name: "a", URL: s.URL}},
+		WithSleep(rs.sleep), WithClock(func() time.Time { return now }), WithBackoff(10*time.Millisecond, 80*time.Millisecond))
+	if _, err := c.CallFunction(context.Background(), "a", "x", "m", nil, 1); err != nil {
+		t.Fatalf("a pinned call should outlast three 429s: %v", err)
+	}
+	if hits.Load() != 4 {
+		t.Fatalf("hits %d, want 4", hits.Load())
+	}
+	cooled := 0
+	for _, d := range rs.ds {
+		if d == 3*time.Second {
+			cooled++
+		}
+	}
+	if cooled != 3 {
+		t.Fatalf("slept %v: want three 3s cooldown waits", rs.ds)
+	}
+}
+
+func TestRateLimitCooldownIsSharedAcrossCallers(t *testing.T) {
+	var hits atomic.Int32
+	s := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write(callResult(`1`))
+	})
+	rs := &recSleep{}
+	now := time.Unix(9000, 0)
+	c := New([]Provider{{Name: "a", URL: s.URL}},
+		WithSleep(rs.sleep), WithClock(func() time.Time { return now }), WithBackoff(time.Millisecond, time.Millisecond))
+	// First call hits the 429 and starts the cooldown; a different call made
+	// afterwards must wait it out too, not just the call that was refused.
+	if _, err := c.CallFunction(context.Background(), "a", "x", "m", nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	rs.ds = nil
+	c.providers[0].coolDown(now, 5*time.Second)
+	if _, err := c.CallFunction(context.Background(), "a", "y", "m", nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(rs.ds) == 0 || rs.ds[0] != 5*time.Second {
+		t.Fatalf("second caller did not wait the shared cooldown: %v", rs.ds)
+	}
+}
+
+func TestUnpinnedRateLimitFailsOverWithoutRetrying(t *testing.T) {
+	var aHits, bHits atomic.Int32
+	a := serve(t, func(w http.ResponseWriter, r *http.Request) { aHits.Add(1); w.WriteHeader(http.StatusTooManyRequests) })
+	b := serve(t, func(w http.ResponseWriter, r *http.Request) { bHits.Add(1); _, _ = w.Write(callResult(`1`)) })
+	c, _ := newTestClient(t, []string{a.URL, b.URL})
+	if _, err := c.CallFunction(context.Background(), "", "x", "m", nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	if aHits.Load() != 1 || bHits.Load() != 1 {
+		t.Fatalf("a %d b %d, want 1 and 1", aHits.Load(), bHits.Load())
+	}
+}
+
+func TestRateLimitRetriesAreBounded(t *testing.T) {
+	var hits atomic.Int32
+	s := serve(t, func(w http.ResponseWriter, r *http.Request) { hits.Add(1); w.WriteHeader(http.StatusTooManyRequests) })
+	c, _ := newTestClient(t, []string{s.URL})
+	_, err := c.CallFunction(context.Background(), "a", "x", "m", nil, 1)
+	if !IsRateLimited(err) || !IsProviderFailure(err) {
+		t.Fatalf("err %v", err)
+	}
+	if want := int32(defaultPinTries + maxRateLimitRetries); hits.Load() != want {
+		t.Fatalf("hits %d, want %d", hits.Load(), want)
+	}
+}

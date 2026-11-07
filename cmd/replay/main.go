@@ -32,7 +32,7 @@ import (
 var version = "dev"
 
 // DefaultArchival are the free archival endpoints, in order (docs/research.md).
-var DefaultArchival = []string{"https://archival-rpc.mainnet.near.org", "https://archival-rpc.mainnet.fastnear.com"}
+var DefaultArchival = []string{"https://archival-rpc.mainnet.fastnear.com", "https://archival-rpc.mainnet.near.org"}
 
 type options struct {
 	Plan, OutJSON, OutMD, CacheDir string

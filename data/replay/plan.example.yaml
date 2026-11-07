@@ -25,6 +25,7 @@ intents_account: intents.near
 # Archival endpoints, tried in order. Omit to use ARGUS_ARCHIVAL_RPC_URLS or
 # the built-in defaults. Do not put API keys in a committed file.
 archival_providers:
+  - https://archival-rpc.mainnet.fastnear.com
   - https://archival-rpc.mainnet.near.org
 
 tokens:

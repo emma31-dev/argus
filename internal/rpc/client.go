@@ -24,6 +24,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -35,7 +36,17 @@ const (
 	defaultBackoff   = 250 * time.Millisecond
 	defaultMaxBack   = 5 * time.Second
 	defaultPinTries  = 2
+
+	// A pinned call cannot move to another provider, so a 429 gets extra
+	// retries on top of pinTries, each after the provider's cooldown.
+	maxRateLimitRetries = 4
+	// Cooldown used when a 429 says nothing about how long to wait, and the
+	// longest cooldown honoured when it does.
+	defaultCooldown = 2 * time.Second
+	maxCooldown     = 30 * time.Second
 )
+
+var retryAfterText = regexp.MustCompile(`(?i)retry after (\d+) second`)
 
 // Provider is one JSON-RPC endpoint.
 type Provider struct {
@@ -105,6 +116,42 @@ type providerState struct {
 	healthy   bool
 	lastError string
 	lastOK    time.Time
+	coolUntil time.Time // set after a 429; every caller waits it out
+}
+
+// cooldownLeft is how long callers must still wait before using the provider.
+func (p *providerState) cooldownLeft(now time.Time) time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.coolUntil.After(now) {
+		return p.coolUntil.Sub(now)
+	}
+	return 0
+}
+
+// coolDown keeps every caller off the provider for d. Concurrent workers
+// that all hit a 429 would otherwise retry together and trip it again.
+func (p *providerState) coolDown(now time.Time, d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if until := now.Add(d); until.After(p.coolUntil) {
+		p.coolUntil = until
+	}
+}
+
+// retryAfter reads how long a 429 asks us to wait: the Retry-After header
+// (seconds), else "retry after N seconds" in the body, else a default. The
+// result is capped so one provider cannot stall a round for long.
+func retryAfter(h http.Header, body []byte) time.Duration {
+	d := defaultCooldown
+	if s, err := strconv.Atoi(h.Get("Retry-After")); err == nil && s > 0 {
+		d = time.Duration(s) * time.Second
+	} else if m := retryAfterText.FindSubmatch(body); m != nil {
+		if s, err := strconv.Atoi(string(m[1])); err == nil && s > 0 {
+			d = time.Duration(s) * time.Second
+		}
+	}
+	return min(d, maxCooldown)
 }
 
 // Client talks to a list of providers. It is safe for concurrent use.
@@ -261,6 +308,7 @@ func (c *Client) call(ctx context.Context, only, method string, params any) (jso
 	triedArchival, sawBlockErr := false, false
 	for _, p := range order {
 		triedArchival = triedArchival || p.Archival
+		rateRetries := 0
 		for a := 0; a < attempts; a++ {
 			if failures > 0 {
 				if err := c.sleep(ctx, c.backoff(failures)); err != nil {
@@ -279,6 +327,12 @@ func (c *Client) call(ctx context.Context, only, method string, params any) (jso
 			}
 			errs = append(errs, err)
 			failures++
+			if only != "" && IsRateLimited(err) && rateRetries < maxRateLimitRetries {
+				// Pinned: there is nowhere else to go, and once() waits out
+				// the cooldown, so this retry is not counted as an attempt.
+				rateRetries++
+				a--
+			}
 			if errors.Is(err, ErrUnknownBlock) {
 				sawBlockErr = true
 				break // retrying the same provider cannot help
@@ -309,6 +363,11 @@ func (c *Client) once(ctx context.Context, p *providerState, method string, para
 			p.markOK(c.now()) // it answered; the call itself was bad
 		}
 		return e
+	}
+	if w := p.cooldownLeft(c.now()); w > 0 {
+		if err := c.sleep(ctx, w); err != nil {
+			return nil, err
+		}
 	}
 	if w := p.limiter.reserve(c.now()); w > 0 {
 		if err := c.sleep(ctx, w); err != nil {
@@ -342,6 +401,9 @@ func (c *Client) once(ctx context.Context, p *providerState, method string, para
 		c.rec(p.Name, method, reqBody, body)
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			p.coolDown(c.now(), retryAfter(resp.Header, body))
+		}
 		return nil, fail(ErrProviderUnavailable, nil, "HTTP_"+strconv.Itoa(resp.StatusCode), truncate(string(body), 200))
 	}
 	var env struct {

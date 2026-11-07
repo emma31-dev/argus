@@ -43,6 +43,13 @@ func IsProviderFailure(err error) bool {
 		errors.Is(err, ErrNeedsArchival)
 }
 
+// IsRateLimited reports whether err is an HTTP 429 from a provider. It is
+// also a provider failure; callers use this to wait instead of giving up.
+func IsRateLimited(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code == "HTTP_429"
+}
+
 // Error is a classified failure of one request to one provider.
 type Error struct {
 	Provider string

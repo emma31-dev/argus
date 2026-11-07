@@ -14,8 +14,15 @@ import (
 )
 
 // DefaultRPCURLs are the free public mainnet endpoints used when
-// ARGUS_RPC_URLS is unset (see docs/research.md).
-var DefaultRPCURLs = []string{"https://free.rpc.fastnear.com", "https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"}
+// ARGUS_RPC_URLS is unset. The NEAR-hosted rpc.mainnet.near.org is left out
+// on purpose: it is deprecated and capped at 30 requests a minute.
+var DefaultRPCURLs = []string{"https://free.rpc.fastnear.com", "https://rpc.mainnet.fastnear.com", "https://near.drpc.org", "https://rpc.intea.rs"}
+
+// DefaultRPCRPS is the per-provider request rate when ARGUS_RPC_RPS is unset.
+// FastNEAR's free endpoint answered 429 for a third of the calls at 2 a
+// second and accepted about 1 a second sustained, so that is the default.
+// Raise it only with a keyed or self-hosted endpoint.
+const DefaultRPCRPS = 1
 
 // Config is the monitor's configuration, read from the environment (names
 // are documented in .env.example).
@@ -135,10 +142,10 @@ func LoadConfig(getenv func(string) string, requireDB bool) (Config, error) {
 	if len(c.RPCURLs) == 0 && len(errs) == errsBefore {
 		c.RPCURLs = append(c.RPCURLs, DefaultRPCURLs...)
 	}
-	rps := str("ARGUS_RPC_RPS", "5")
+	rps := str("ARGUS_RPC_RPS", strconv.Itoa(DefaultRPCRPS))
 	if v, err := strconv.ParseFloat(rps, 64); err != nil || v <= 0 {
 		errs = append(errs, fmt.Errorf("ARGUS_RPC_RPS=%q: want a positive number", rps))
-		c.RPCRPS = 5
+		c.RPCRPS = DefaultRPCRPS
 	} else {
 		c.RPCRPS = v
 	}

@@ -16,7 +16,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Interval != 30*time.Second || c.K != 4 || c.BatchSize != 50 || c.Concurrency != 8 || c.HTTPAddr != ":8080" ||
-		c.RPCRPS != 5 || c.APIRateLimit != 60 || c.DiscoveryInterval != 24*time.Hour || c.Retention != 720*time.Hour ||
+		c.RPCRPS != DefaultRPCRPS || c.APIRateLimit != 60 || c.DiscoveryInterval != 24*time.Hour || c.Retention != 720*time.Hour ||
 		len(c.RPCURLs) != 2 || c.IntentsAccount != "intents.near" || len(c.CORSOrigins) != 1 || c.CORSOrigins[0] != "*" {
 		t.Fatalf("defaults = %+v", c)
 	}
@@ -47,8 +47,13 @@ func TestOnceDoesNotNeedDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := LoadConfig(env(nil), false)
-	if err != nil || len(c.RPCURLs) != 3 || c.RPCURLs[0] != "https://free.rpc.fastnear.com" {
+	if err != nil || len(c.RPCURLs) != 4 || c.RPCURLs[0] != "https://free.rpc.fastnear.com" {
 		t.Fatalf("default providers = %v err %v", c.RPCURLs, err)
+	}
+	for _, u := range c.RPCURLs {
+		if strings.Contains(u, "near.org") {
+			t.Errorf("deprecated NEAR-hosted endpoint in defaults: %s", u)
+		}
 	}
 	if _, err := LoadConfig(env(map[string]string{"ARGUS_RPC_URLS": " , "}), false); err != nil {
 		t.Fatalf("blank list falls back to defaults: %v", err)

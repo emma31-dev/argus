@@ -20,11 +20,11 @@ const (
 )
 
 func defaultRPC() []string {
-	return []string{"https://free.rpc.fastnear.com", "https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"}
+	return []string{"https://free.rpc.fastnear.com", "https://rpc.mainnet.fastnear.com", "https://near.drpc.org", "https://rpc.intea.rs"}
 }
 
 func defaultArchival() []string {
-	return []string{"https://archival-rpc.mainnet.near.org", "https://archival-rpc.mainnet.fastnear.com"}
+	return []string{"https://archival-rpc.mainnet.fastnear.com", "https://archival-rpc.mainnet.near.org"}
 }
 
 // urlsFrom reads a comma-separated URL list from env, else returns def.
