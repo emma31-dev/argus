@@ -16,15 +16,17 @@ The official postmortem couldn't be opened from the build environment, so the fi
 
 ## How it works
 
-Every 30 seconds, at one final block and through one RPC provider:
+Every `ARGUS_INTERVAL` (30 seconds by default), at one final block and through one RPC provider:
 
 - owed: `intents.near.mt_batch_supply` for every token, 50 ids per call
-- held: `ft_balance_of` (NEP-141) or `mt_balance_of` (NEP-245) on each token contract, for `intents.near`
+- held: `ft_balance_of` (NEP-141) on each token contract, or `mt_batch_balance_of` (NEP-245) for up to 50 tokens of one contract, always for `intents.near`
 - gap = held - owed, in big-integer math on the raw strings
 
 Both sides come from the same block, otherwise ordinary deposits and withdrawals would show up as fake gaps.
 
-A negative gap turns a token amber first, because a transfer in flight can take a few blocks. If it stays negative for 4 rounds in a row (about 2 minutes), or passes an absolute limit set in `ARGUS_RED_THRESHOLDS`, the token goes red. Argus then opens an incident, sends Telegram and webhook alerts, and attaches the `intents.near` events from that block range. A failed read marks a token stale and never resets its streak.
+`intents.near` lists about 88,000 token ids, almost all NFTs that Argus skips. About 700 are NEP-141 or NEP-245 tokens and all of them are tracked. A round is then roughly 500 RPC calls. FastNEAR's free endpoint sustained about 1 request a second in a live test and answered 429 for a third of the calls at 2, so the default `ARGUS_RPC_RPS` is 1. At that rate a full mainnet round took about 8 minutes with no 429s, and rounds follow each other back to back. A keyed or self-hosted endpoint with a higher `ARGUS_RPC_RPS` gets the 30 second cadence.
+
+A negative gap turns a token amber first, because a transfer in flight can take a few blocks. If it stays negative for 4 rounds in a row (about 2 minutes at the 30 second cadence), or passes an absolute limit set in `ARGUS_RED_THRESHOLDS`, the token goes red. Argus then opens an incident, sends Telegram and webhook alerts, and attaches the `intents.near` events from that block range. A failed read marks a token stale and never resets its streak.
 
 Not covered: origin-chain backing of bridged tokens, NFTs, and `imt:` tokens. Argus only reads. It never signs anything and holds no keys.
 
@@ -46,7 +48,7 @@ cp .env.example .env
 docker compose up --build    # postgres, redis, argus on :8080, dashboard on :3000
 ```
 
-Without Docker you need Go 1.23+, Postgres 16, and optionally Redis 7. The dashboard needs Node 22 and pnpm 10.
+Without Docker you need Go 1.26.10+, Postgres 16, and optionally Redis 7. The dashboard needs Node 22 and pnpm 10.
 
 ```sh
 go build -o bin/argus ./cmd/argus
@@ -85,6 +87,6 @@ Every setting is an environment variable, listed in [.env.example](.env.example)
 
 This was built where every NEAR host was blocked. The Go tests (including the Postgres and Redis ones), `cmd/verify` and the dashboard checks pass. The probes, a live round and the October replay haven't run against mainnet yet. Method names and argument shapes were checked against the near/intents source instead. The best guess for the replayed token is HOT Omni USDT on BNB Chain (`nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g`), still unconfirmed.
 
-Known limits: free public RPC is rate-limited, and non-archival nodes only go back about 36 hours. Tokens without metadata show raw amounts. A fee-on-transfer or rebasing token could stay red without anything being wrong.
+Known limits: free public RPC is rate-limited (a provider that answers 429 is put on a cooldown and the round carries on or moves to the next provider), and non-archival nodes only go back about 36 hours. Tokens without metadata show raw amounts. A fee-on-transfer or rebasing token could stay red without anything being wrong.
 
 MIT, see [LICENSE](LICENSE).
