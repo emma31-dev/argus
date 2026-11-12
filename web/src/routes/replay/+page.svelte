@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type ReplayResponse, type ReplayToken } from '$lib/api';
-	import { Resource } from '$lib/live.svelte';
-	import { formatDuration, formatInteger, formatUtc } from '$lib/format';
-	import { href, REPO_URL } from '$lib/links';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import GapChart, { type GapMarker } from '$lib/components/GapChart.svelte';
-	import BlockLink from '$lib/components/BlockLink.svelte';
-	import Amount from '$lib/components/Amount.svelte';
-	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
-	import Icon from '$lib/components/Icon.svelte';
-	import ChainChip from '$lib/components/ChainChip.svelte';
-	import CopyButton from '$lib/components/CopyButton.svelte';
+	import { api, type ReplayResponse, type ReplayToken } from '#lib/api.ts';
+	import { Resource } from '#lib/live.svelte.ts';
+	import { formatDuration, formatInteger, formatUtc } from '#lib/format.ts';
+	import { href, REPO_URL } from '#lib/links.ts';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import GapChart, { type GapMarker } from '#lib/components/GapChart.svelte';
+	import BlockLink from '#lib/components/BlockLink.svelte';
+	import Amount from '#lib/components/Amount.svelte';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import Icon from '#lib/components/Icon.svelte';
+	import ChainChip from '#lib/components/ChainChip.svelte';
+	import CopyButton from '#lib/components/CopyButton.svelte';
 
 	const replay = new Resource<ReplayResponse>((s) => api.replay(s));
 	onMount(() => {

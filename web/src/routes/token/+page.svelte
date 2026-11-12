@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { api, exportCsvUrl, type HistoryResponse, type TokenDetail } from '$lib/api';
-	import { monitor } from '$lib/monitor.svelte';
-	import { poll, Resource } from '$lib/live.svelte';
+	import { api, exportCsvUrl, type HistoryResponse, type TokenDetail } from '#lib/api.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { poll, Resource } from '#lib/live.svelte.ts';
 	import {
 		formatAmount,
 		formatDuration,
@@ -13,25 +13,25 @@
 		formatUtc,
 		parseAmount,
 		ratioPercent
-	} from '$lib/format';
-	import { explorer, href } from '$lib/links';
-	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import CopyButton from '$lib/components/CopyButton.svelte';
-	import BlockLink from '$lib/components/BlockLink.svelte';
-	import Amount from '$lib/components/Amount.svelte';
-	import Ago from '$lib/components/Ago.svelte';
-	import Icon from '$lib/components/Icon.svelte';
-	import Banner from '$lib/components/Banner.svelte';
-	import Segmented from '$lib/components/Segmented.svelte';
-	import TokenChart from '$lib/components/TokenChart.svelte';
-	import RpcProof from '$lib/components/RpcProof.svelte';
-	import EmptyState from '$lib/components/EmptyState.svelte';
-	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
-	import StaleBanner from '$lib/components/StaleBanner.svelte';
-	import { statusMeta } from '$lib/status';
-	import ChainChip from '$lib/components/ChainChip.svelte';
-	import { chainLabel } from '$lib/chain';
-	import { summarizeReadError } from '$lib/errors';
+	} from '#lib/format.ts';
+	import { explorer, href } from '#lib/links.ts';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import CopyButton from '#lib/components/CopyButton.svelte';
+	import BlockLink from '#lib/components/BlockLink.svelte';
+	import Amount from '#lib/components/Amount.svelte';
+	import Ago from '#lib/components/Ago.svelte';
+	import Icon from '#lib/components/Icon.svelte';
+	import Banner from '#lib/components/Banner.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
+	import TokenChart from '#lib/components/TokenChart.svelte';
+	import RpcProof from '#lib/components/RpcProof.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
+	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import StaleBanner from '#lib/components/StaleBanner.svelte';
+	import { statusMeta } from '#lib/status.ts';
+	import ChainChip from '#lib/components/ChainChip.svelte';
+	import { chainLabel } from '#lib/chain.ts';
+	import { summarizeReadError } from '#lib/errors.ts';
 
 	type Range = '1h' | '24h' | '7d' | '30d';
 	const RANGES: Record<Range, number> = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 };

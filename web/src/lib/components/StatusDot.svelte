@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { Status } from '$lib/api';
-	import { statusMeta } from '$lib/status';
+	import type { Status } from '#lib/api.ts';
+	import { statusMeta } from '#lib/status.ts';
 
 	let { status, pulse = false, size = 8 }: { status: Status | string; pulse?: boolean; size?: number } =
 		$props();

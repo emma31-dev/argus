@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { API_BASE } from '$lib/api';
-	import { API_DOC_URL } from '$lib/links';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import Code from '$lib/components/Code.svelte';
-	import Icon from '$lib/components/Icon.svelte';
+	import { API_BASE } from '#lib/api.ts';
+	import { API_DOC_URL } from '#lib/links.ts';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import Code from '#lib/components/Code.svelte';
+	import Icon from '#lib/components/Icon.svelte';
 
 	let origin = $state('https://<argus-host>');
 	onMount(() => {

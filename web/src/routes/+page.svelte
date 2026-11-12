@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type IncidentsResponse, type TokensResponse } from '$lib/api';
-	import { monitor } from '$lib/monitor.svelte';
-	import { poll, Resource } from '$lib/live.svelte';
-	import { formatAmount, formatInteger } from '$lib/format';
-	import { href } from '$lib/links';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import StatusHero from '$lib/components/StatusHero.svelte';
-	import TokenTable from '$lib/components/TokenTable.svelte';
-	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
-	import StaleBanner from '$lib/components/StaleBanner.svelte';
-	import ProvidersBanner from '$lib/components/ProvidersBanner.svelte';
-	import BlockLink from '$lib/components/BlockLink.svelte';
-	import Ago from '$lib/components/Ago.svelte';
-	import Icon from '$lib/components/Icon.svelte';
-	import ChainChip from '$lib/components/ChainChip.svelte';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { api, type IncidentsResponse, type TokensResponse } from '#lib/api.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { poll, Resource } from '#lib/live.svelte.ts';
+	import { formatAmount, formatInteger } from '#lib/format.ts';
+	import { href } from '#lib/links.ts';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import StatusHero from '#lib/components/StatusHero.svelte';
+	import TokenTable from '#lib/components/TokenTable.svelte';
+	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import StaleBanner from '#lib/components/StaleBanner.svelte';
+	import ProvidersBanner from '#lib/components/ProvidersBanner.svelte';
+	import BlockLink from '#lib/components/BlockLink.svelte';
+	import Ago from '#lib/components/Ago.svelte';
+	import Icon from '#lib/components/Icon.svelte';
+	import ChainChip from '#lib/components/ChainChip.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	const tokens = new Resource<TokensResponse>((s) => api.tokens(s));
 	const openIncidents = new Resource<IncidentsResponse>((s) => api.incidents('open', 10, s));

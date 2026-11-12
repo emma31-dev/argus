@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { formatAgo, formatUtc } from '$lib/format';
-	import { clock } from '$lib/live.svelte';
+	import { formatAgo, formatUtc } from '#lib/format.ts';
+	import { clock } from '#lib/live.svelte.ts';
 
 	let { iso }: { iso: string | null | undefined } = $props();
 	const t = $derived(iso ? new Date(iso).getTime() : NaN);

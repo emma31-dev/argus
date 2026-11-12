@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { chainLabel } from '$lib/chain';
+	import { chainLabel } from '#lib/chain.ts';
 
 	/** Muted chain label shown next to every symbol: symbols repeat across chains. */
 	let { id, chain, size = 'sm' }: { id: string; chain?: string; size?: 'sm' | 'md' } = $props();

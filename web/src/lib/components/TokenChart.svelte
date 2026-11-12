@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { scaleLinear } from 'd3-scale';
 	import { area, line, curveMonotoneX } from 'd3-shape';
-	import type { Snapshot } from '$lib/api';
-	import { chartId, formatTimeTick, nearestIndex, timeTicks } from '$lib/chart';
+	import type { Snapshot } from '#lib/api.ts';
+	import { chartId, formatTimeTick, nearestIndex, timeTicks } from '#lib/chart.ts';
 	import {
 		formatAxis,
 		formatInteger,
@@ -12,7 +12,7 @@
 		parseAmount,
 		ratioPercent,
 		toTokenNumber
-	} from '$lib/format';
+	} from '#lib/format.ts';
 
 	let {
 		points,

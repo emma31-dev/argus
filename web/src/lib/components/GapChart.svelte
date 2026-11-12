@@ -9,10 +9,10 @@
 <script lang="ts">
 	import { scaleLinear } from 'd3-scale';
 	import { area, line, curveMonotoneX, curveStepAfter } from 'd3-shape';
-	import type { Snapshot, Status } from '$lib/api';
-	import { chartId, nearestIndex } from '$lib/chart';
-	import { formatAxis, formatInteger, formatTokens, formatUtc, parseAmount, toTokenNumber } from '$lib/format';
-	import { statusMeta } from '$lib/status';
+	import type { Snapshot, Status } from '#lib/api.ts';
+	import { chartId, nearestIndex } from '#lib/chart.ts';
+	import { formatAxis, formatInteger, formatTokens, formatUtc, parseAmount, toTokenNumber } from '#lib/format.ts';
+	import { statusMeta } from '#lib/status.ts';
 
 	/**
 	 * Gap (held − owed) across block heights, with annotated markers.

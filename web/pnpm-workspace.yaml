@@ -1,0 +1,3 @@
+# pnpm 10.28 reads build-script approvals here, not from package.json.
+onlyBuiltDependencies:
+  - esbuild

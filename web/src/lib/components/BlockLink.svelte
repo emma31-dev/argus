@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { formatInteger } from '$lib/format';
-	import { explorer } from '$lib/links';
+	import { formatInteger } from '#lib/format.ts';
+	import { explorer } from '#lib/links.ts';
 
 	let { height, prefix = '' }: { height: number | null | undefined; prefix?: string } = $props();
 </script>

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { monitor } from '$lib/monitor.svelte';
-	import { formatAgo } from '$lib/format';
-	import { hostOf, shortError } from '$lib/errors';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { formatAgo } from '#lib/format.ts';
+	import { hostOf, shortError } from '#lib/errors.ts';
 	import Banner from './Banner.svelte';
 
 	const providers = $derived(monitor.status.data?.providers ?? []);

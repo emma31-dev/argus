@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { api, type IncidentDetail, type IncidentEvent } from '$lib/api';
-	import { monitor } from '$lib/monitor.svelte';
-	import { clock, poll, Resource } from '$lib/live.svelte';
-	import { formatAmount, formatDuration, formatInteger, formatUtc, middleEllipsis } from '$lib/format';
-	import { explorer, href } from '$lib/links';
-	import Icon from '$lib/components/Icon.svelte';
-	import IncidentBadge from '$lib/components/IncidentBadge.svelte';
-	import BlockLink from '$lib/components/BlockLink.svelte';
-	import Amount from '$lib/components/Amount.svelte';
-	import CopyButton from '$lib/components/CopyButton.svelte';
-	import EmptyState from '$lib/components/EmptyState.svelte';
-	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
-	import GapChart, { type GapMarker } from '$lib/components/GapChart.svelte';
-	import Code from '$lib/components/Code.svelte';
-	import ChainChip from '$lib/components/ChainChip.svelte';
+	import { api, type IncidentDetail, type IncidentEvent } from '#lib/api.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { clock, poll, Resource } from '#lib/live.svelte.ts';
+	import { formatAmount, formatDuration, formatInteger, formatUtc, middleEllipsis } from '#lib/format.ts';
+	import { explorer, href } from '#lib/links.ts';
+	import Icon from '#lib/components/Icon.svelte';
+	import IncidentBadge from '#lib/components/IncidentBadge.svelte';
+	import BlockLink from '#lib/components/BlockLink.svelte';
+	import Amount from '#lib/components/Amount.svelte';
+	import CopyButton from '#lib/components/CopyButton.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
+	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import GapChart, { type GapMarker } from '#lib/components/GapChart.svelte';
+	import Code from '#lib/components/Code.svelte';
+	import ChainChip from '#lib/components/ChainChip.svelte';
 
 	const id = $derived(page.url.searchParams.get('id') ?? '');
 	const inc = new Resource<IncidentDetail>((s) => api.incident(id, s));

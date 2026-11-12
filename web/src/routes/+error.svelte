@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { href } from '$lib/links';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { href } from '#lib/links.ts';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 </script>
 
 <svelte:head><title>{page.status} · Argus</title></svelte:head>

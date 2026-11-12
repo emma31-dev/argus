@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatExact, formatTokens, parseAmount } from '$lib/format';
+	import { formatExact, formatTokens, parseAmount } from '#lib/format.ts';
 
 	/**
 	 * A token amount from the API (smallest-unit integer string), shown in

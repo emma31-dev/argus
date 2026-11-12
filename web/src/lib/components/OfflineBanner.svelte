@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ApiError } from '$lib/api';
+	import type { ApiError } from '#lib/api.ts';
 	import Banner from './Banner.svelte';
 	import Icon from './Icon.svelte';
 

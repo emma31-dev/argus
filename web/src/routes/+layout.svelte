@@ -1,34 +1,34 @@
 <script lang="ts">
 	import '@fontsource-variable/inter';
 	import '@fontsource-variable/geist-mono';
-	import '$lib/styles/tokens.css';
-	import '$lib/styles/base.css';
+	import '#lib/styles/tokens.css';
+	import '#lib/styles/base.css';
 
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { base } from '$app/paths';
-	import Logo from '$lib/components/Logo.svelte';
-	import Icon from '$lib/components/Icon.svelte';
-	import GithubMark from '$lib/components/GithubMark.svelte';
-	import StatusDot from '$lib/components/StatusDot.svelte';
-	import { theme } from '$lib/theme.svelte';
-	import { monitor } from '$lib/monitor.svelte';
-	import { poll } from '$lib/live.svelte';
-	import { formatInteger } from '$lib/format';
-	import { href, REPO_URL } from '$lib/links';
-	import { statusMeta } from '$lib/status';
+	import Logo from '#lib/components/Logo.svelte';
+	import Icon from '#lib/components/Icon.svelte';
+	import GithubMark from '#lib/components/GithubMark.svelte';
+	import StatusDot from '#lib/components/StatusDot.svelte';
+	import { theme } from '#lib/theme.svelte.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { poll } from '#lib/live.svelte.ts';
+	import { formatInteger } from '#lib/format.ts';
+	import { href, REPO_URL } from '#lib/links.ts';
+	import { statusMeta } from '#lib/status.ts';
 
 	let { children } = $props();
 
 	const nav = [
-		{ href: href.home(), label: 'Overview', match: (p: string) => p === '/' || p.startsWith('/token') },
-		{ href: href.incidents(), label: 'Incidents', match: (p: string) => p.startsWith('/incident') },
-		{ href: href.replay(), label: 'Replay', match: (p: string) => p.startsWith('/replay') },
-		{ href: href.how(), label: 'How it works', match: (p: string) => p.startsWith('/how-it-works') },
-		{ href: href.api(), label: 'API', match: (p: string) => p.startsWith('/api') }
+		{ href: href.home(), label: 'Overview', match: (r: string) => r === '/' || r.startsWith('/token') },
+		{ href: href.incidents(), label: 'Incidents', match: (r: string) => r.startsWith('/incident') },
+		{ href: href.replay(), label: 'Replay', match: (r: string) => r.startsWith('/replay') },
+		{ href: href.how(), label: 'How it works', match: (r: string) => r.startsWith('/how-it-works') },
+		{ href: href.api(), label: 'API', match: (r: string) => r.startsWith('/api') }
 	];
 
-	const path = $derived(page.url.pathname.slice(base.length) || '/');
+	// Route IDs are independent of the configured base path, unlike pathname slicing.
+	const route = $derived(page.route.id ?? '');
 	const st = $derived(monitor.status.data);
 	// "0.1.0" -> "v0.1.0"; non-numeric builds ("dev") are shown as-is.
 	const version = $derived(st?.version ? (/^\d/.test(st.version) ? `v${st.version}` : st.version) : '');
@@ -52,7 +52,7 @@
 		<a href={href.home()} class="brand" aria-label="Argus home"><Logo /></a>
 		<nav aria-label="Primary" class="nav">
 			{#each nav as item (item.href)}
-				<a href={item.href} class:active={item.match(path)} aria-current={item.match(path) ? 'page' : undefined}
+				<a href={item.href} class:active={item.match(route)} aria-current={item.match(route) ? 'page' : undefined}
 					>{item.label}</a
 				>
 			{/each}
@@ -94,7 +94,7 @@
 	</div>
 	<nav aria-label="Primary" class="container nav-mobile">
 		{#each nav as item (item.href)}
-			<a href={item.href} class:active={item.match(path)} aria-current={item.match(path) ? 'page' : undefined}
+			<a href={item.href} class:active={item.match(route)} aria-current={item.match(route) ? 'page' : undefined}
 				>{item.label}</a
 			>
 		{/each}

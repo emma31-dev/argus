@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import type { Token, Status } from '$lib/api';
-	import { STATUS_RANK } from '$lib/api';
-	import { formatPercent, middleEllipsis, parseAmount, ratioPercent } from '$lib/format';
-	import { href } from '$lib/links';
+	import type { Token, Status } from '#lib/api.ts';
+	import { STATUS_RANK } from '#lib/api.ts';
+	import { formatPercent, middleEllipsis, parseAmount, ratioPercent } from '#lib/format.ts';
+	import { href } from '#lib/links.ts';
 	import Amount from './Amount.svelte';
 	import BlockLink from './BlockLink.svelte';
 	import StatusBadge from './StatusBadge.svelte';
@@ -11,8 +11,8 @@
 	import EmptyState from './EmptyState.svelte';
 	import Icon from './Icon.svelte';
 	import ChainChip from './ChainChip.svelte';
-	import { chainLabel } from '$lib/chain';
-	import { summarizeReadError } from '$lib/errors';
+	import { chainLabel } from '#lib/chain.ts';
+	import { summarizeReadError } from '#lib/errors.ts';
 
 	let { tokens, loading = false }: { tokens: Token[] | null; loading?: boolean } = $props();
 

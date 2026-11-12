@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Snapshot, Token } from '$lib/api';
-	import { formatInteger } from '$lib/format';
-	import { INTENTS_CONTRACT } from '$lib/links';
+	import type { Snapshot, Token } from '#lib/api.ts';
+	import { formatInteger } from '#lib/format.ts';
+	import { INTENTS_CONTRACT } from '#lib/links.ts';
 	import Code from './Code.svelte';
 	import BlockLink from './BlockLink.svelte';
 

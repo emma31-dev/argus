@@ -1,12 +1,12 @@
 <script lang="ts">
-	import type { StatusResponse, Status } from '$lib/api';
-	import { formatAgo, formatInteger, formatUtc } from '$lib/format';
-	import { monitor } from '$lib/monitor.svelte';
-	import { href } from '$lib/links';
+	import type { StatusResponse, Status } from '#lib/api.ts';
+	import { formatAgo, formatInteger, formatUtc } from '#lib/format.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { href } from '#lib/links.ts';
 	import BlockLink from './BlockLink.svelte';
 	import Icon from './Icon.svelte';
 	import StatusDot from './StatusDot.svelte';
-	import { statusMeta } from '$lib/status';
+	import { statusMeta } from '#lib/status.ts';
 
 	let { status }: { status: StatusResponse } = $props();
 

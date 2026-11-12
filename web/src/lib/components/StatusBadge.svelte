@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { Status } from '$lib/api';
-	import { statusMeta } from '$lib/status';
+	import type { Status } from '#lib/api.ts';
+	import { statusMeta } from '#lib/status.ts';
 	import Icon from './Icon.svelte';
 
 	let {

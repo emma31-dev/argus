@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { formatAgo, formatDuration } from '$lib/format';
-	import { monitor } from '$lib/monitor.svelte';
+	import { formatAgo, formatDuration } from '#lib/format.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
 	import Banner from './Banner.svelte';
 
 	/** Set where ProvidersBanner is shown, so the same cause isn't reported twice. */

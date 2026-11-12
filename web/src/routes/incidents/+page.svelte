@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { api, type IncidentsResponse } from '$lib/api';
-	import { monitor } from '$lib/monitor.svelte';
-	import { poll, Resource } from '$lib/live.svelte';
-	import { formatDuration, formatInteger, formatUtc } from '$lib/format';
-	import { href } from '$lib/links';
-	import { clock } from '$lib/live.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import Segmented from '$lib/components/Segmented.svelte';
-	import IncidentBadge from '$lib/components/IncidentBadge.svelte';
-	import Amount from '$lib/components/Amount.svelte';
-	import BlockLink from '$lib/components/BlockLink.svelte';
-	import EmptyState from '$lib/components/EmptyState.svelte';
-	import OfflineBanner from '$lib/components/OfflineBanner.svelte';
-	import Ago from '$lib/components/Ago.svelte';
-	import ChainChip from '$lib/components/ChainChip.svelte';
+	import { api, type IncidentsResponse } from '#lib/api.ts';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { poll, Resource } from '#lib/live.svelte.ts';
+	import { formatDuration, formatInteger, formatUtc } from '#lib/format.ts';
+	import { href } from '#lib/links.ts';
+	import { clock } from '#lib/live.svelte.ts';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import Segmented from '#lib/components/Segmented.svelte';
+	import IncidentBadge from '#lib/components/IncidentBadge.svelte';
+	import Amount from '#lib/components/Amount.svelte';
+	import BlockLink from '#lib/components/BlockLink.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
+	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import Ago from '#lib/components/Ago.svelte';
+	import ChainChip from '#lib/components/ChainChip.svelte';
 
 	type F = 'all' | 'open' | 'closed';
 	let filter = $state<F>('all');

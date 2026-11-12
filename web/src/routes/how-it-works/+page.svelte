@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { monitor } from '$lib/monitor.svelte';
-	import { href, REPO_URL } from '$lib/links';
-	import { exportCsvUrl } from '$lib/api';
-	import Icon from '$lib/components/Icon.svelte';
-	import SameBlock from '$lib/components/diagrams/SameBlock.svelte';
-	import Debounce from '$lib/components/diagrams/Debounce.svelte';
-	import StatusDot from '$lib/components/StatusDot.svelte';
+	import { monitor } from '#lib/monitor.svelte.ts';
+	import { href, REPO_URL } from '#lib/links.ts';
+	import { exportCsvUrl } from '#lib/api.ts';
+	import Icon from '#lib/components/Icon.svelte';
+	import SameBlock from '#lib/components/diagrams/SameBlock.svelte';
+	import Debounce from '#lib/components/diagrams/Debounce.svelte';
+	import StatusDot from '#lib/components/StatusDot.svelte';
 
 	const k = $derived(monitor.status.data?.debounce_snapshots ?? 4);
 	const interval = $derived(monitor.status.data?.interval_seconds ?? 30);
