@@ -48,7 +48,7 @@ cp .env.example .env
 docker compose up --build    # postgres, redis, argus on :8080, dashboard on :3000
 ```
 
-Without Docker you need Go 1.26.10+, Postgres 16, and optionally Redis 7. The dashboard needs Node 22 and pnpm 10.
+Without Docker you need Go 1.27.4+, Postgres 16, and optionally Redis 7. The dashboard needs Node 22.17+ and pnpm 10.
 
 ```sh
 go build -o bin/argus ./cmd/argus
@@ -85,7 +85,7 @@ Every setting is an environment variable, listed in [.env.example](.env.example)
 
 ## Status
 
-This was built where every NEAR host was blocked. The Go tests (including the Postgres and Redis ones), `cmd/verify` and the dashboard checks pass. The probes, a live round and the October replay haven't run against mainnet yet. Method names and argument shapes were checked against the near/intents source instead. The best guess for the replayed token is HOT Omni USDT on BNB Chain (`nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g`), still unconfirmed.
+This was built where every NEAR host was blocked. The Go tests, `cmd/verify` and the dashboard checks pass. The Postgres and Redis tests are skipped unless `ARGUS_TEST_DATABASE_URL` and `ARGUS_TEST_REDIS_URL` are set. Read-only probes (`probe owed`, `probe discovery`) have run. A full mainnet round and the October replay have not run yet (they need Postgres and archival access). Method names and argument shapes were checked against the near/intents source, and the probes confirm them. The best guess for the replayed token is HOT Omni USDT on BNB Chain (`nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g`), still unconfirmed.
 
 Known limits: free public RPC is rate-limited (a provider that answers 429 is put on a cooldown and the round carries on or moves to the next provider), and non-archival nodes only go back about 36 hours. Tokens without metadata show raw amounts. A fee-on-transfer or rebasing token could stay red without anything being wrong.
 

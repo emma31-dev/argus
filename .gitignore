@@ -9,6 +9,11 @@ coverage.out
 .env.*
 !.env.example
 
+# Generated probe captures and replay inputs/outputs
+data/probe/
+data/replay/plan.yaml
+data/replay/*.json
+
 # Web
 web/node_modules/
 web/.svelte-kit/
