@@ -1,0 +1,61 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: ui-sans-serif, system-ui, sans-serif
+    lineColor: '#5B6B7F'
+---
+flowchart TB
+  subgraph RPC["NEAR mainnet (read only)"]
+    NODE["<b>JSON-RPC provider</b><br/>free.rpc.fastnear.com<br/>final block, one height"]
+    INTENTS["<b>intents.near</b><br/>mt_batch_supply<br/>ledger owed"]
+    TOKENS["<b>token contracts</b><br/>ft_balance_of / mt_batch_balance_of<br/>held balances"]
+  end
+
+  subgraph MON["Go monitor (cmd/argus)"]
+    DISC["<b>internal/tokens</b><br/>discovery + parse.go<br/>in-scope token ids"]
+    READ["<b>internal/snapshot</b><br/>reader.go same block<br/>math.go big-int gap"]
+    ALERT["<b>internal/alert</b><br/>state.go K=4<br/>engine.go incidents"]
+    EVENTS["<b>internal/events</b><br/>attach.go<br/>block events"]
+    STORE["<b>internal/store</b><br/>Postgres repo<br/>snapshots, incidents, outbox"]
+    API["<b>internal/api</b><br/>api.go<br/>/v1/* and /healthz"]
+  end
+
+  subgraph WEB["Dashboard (web/)"]
+    CLIENT["<b>web/src/lib/api.ts</b><br/>typed /v1 client"]
+    PAGES["<b>web/src/routes</b><br/>overview, token, incidents, replay"]
+  end
+
+  subgraph OUT["Alerts and exports"]
+    TG["<b>internal/alert/telegram.go</b><br/>Telegram bot"]
+    WH["<b>internal/alert/webhook.go</b><br/>HMAC-signed webhook"]
+    CSV["<b>cmd/argus -once</b><br/>status table + CSV API"]
+  end
+
+  NODE -->|"call_function at height H"| INTENTS
+  NODE -->|"call_function at height H"| TOKENS
+  INTENTS -->|"owed per token"| READ
+  TOKENS -->|"held per token"| READ
+  DISC -->|"in-scope token ids"| READ
+  READ -->|"Snapshot with gap"| ALERT
+  ALERT -->|"incident block range"| EVENTS
+  ALERT -->|"Alert"| TG
+  ALERT -->|"Alert"| WH
+  ALERT -->|"state, incidents, outbox"| STORE
+  STORE -->|"queries"| API
+  API -->|"JSON /v1"| CLIENT
+  CLIENT --> PAGES
+  READ -->|"one-round table"| CSV
+
+  classDef rpc fill:#E8F1FB,stroke:#2F6FB2,color:#0B2545
+  classDef core fill:#EAF6EC,stroke:#2E7D32,color:#102A12
+  classDef ui fill:#FFF3E0,stroke:#B26A00,color:#3B2400
+  classDef out fill:#F3E8FB,stroke:#7B3FA0,color:#2A0F3D
+  class NODE,INTENTS,TOKENS rpc
+  class DISC,READ,ALERT,EVENTS,STORE,API core
+  class CLIENT,PAGES ui
+  class TG,WH,CSV out
+  style RPC fill:#F7FAFD,stroke:#2F6FB2,color:#0B2545
+  style MON fill:#F6FBF7,stroke:#2E7D32,color:#102A12
+  style WEB fill:#FFFBF5,stroke:#B26A00,color:#3B2400
+  style OUT fill:#FBF7FE,stroke:#7B3FA0,color:#2A0F3D

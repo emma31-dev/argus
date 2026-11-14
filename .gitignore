@@ -14,6 +14,9 @@ data/probe/
 data/replay/plan.yaml
 data/replay/*.json
 
+# Raw terminal logs stay local; committed evidence is normalized UTF-8
+evidence/*.log
+
 # Web
 web/node_modules/
 web/.svelte-kit/

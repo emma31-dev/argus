@@ -1,0 +1,27 @@
+﻿# go test ./... -count=1, 2026-11-14
+# go version: 
+go version go1.27.4 windows/amd64
+# commit: 
+7285a3a
+ (working tree has the alert test ordering fix)
+
+ok    github.com/emma31-dev/argus/cmd/argus  2.218s
+skip  github.com/emma31-dev/argus/cmd/probe  0.001s
+ok    github.com/emma31-dev/argus/cmd/replay  4.859s
+ok    github.com/emma31-dev/argus/cmd/verify  6.505s
+skip  github.com/emma31-dev/argus/cmd/verify/gen  0.001s
+ok    github.com/emma31-dev/argus/internal/alert  3.48s
+ok    github.com/emma31-dev/argus/internal/api  4.374s
+ok    github.com/emma31-dev/argus/internal/events  4.276s
+ok    github.com/emma31-dev/argus/internal/fixturegen  4.734s
+skip  github.com/emma31-dev/argus/internal/model  0s
+ok    github.com/emma31-dev/argus/internal/report  2.144s
+ok    github.com/emma31-dev/argus/internal/rpc  4.507s
+ok    github.com/emma31-dev/argus/internal/rpc/rpctest  3.653s
+ok    github.com/emma31-dev/argus/internal/snapshot  2.568s
+ok    github.com/emma31-dev/argus/internal/store  1.936s
+ok    github.com/emma31-dev/argus/internal/summary  6.157s
+ok    github.com/emma31-dev/argus/internal/tokens  3.785s
+skip  github.com/emma31-dev/argus/migrations  0s
+
+# summary: 236 tests passed, 25 skipped, 0 failed

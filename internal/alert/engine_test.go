@@ -302,8 +302,13 @@ func TestEngineAtomicOutboxFailureAmberThenGreen(t *testing.T) {
 func TestEngineAtomicOutboxFailureRedThenRecoverThenDeficit(t *testing.T) {
 	ctx := context.Background()
 	r := newRig(2)
-	for b, g := range map[uint64]string{1: "-5", 2: "-5"} {
-		if err := r.e.Process(ctx, []model.Snapshot{snap(b, g)}, nil); err != nil {
+	// Order matters: feeding block 2 before block 1 marks block 1 stale, so
+	// the map iteration this test used to rely on was nondeterministic.
+	for _, tc := range []struct {
+		block uint64
+		gap   string
+	}{{1, "-5"}, {2, "-5"}} {
+		if err := r.e.Process(ctx, []model.Snapshot{snap(tc.block, tc.gap)}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

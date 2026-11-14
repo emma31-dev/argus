@@ -1,0 +1,33 @@
+﻿Fixture set: synthetic (not mainnet data)
+  directory:        data\fixtures\synthetic
+  recorded exchanges: 108, rounds replayed: 12 (blocks 1000030 .. 1000360), K = 4, provider: synthetic
+
+Status after the last round (block 1000360)
+TOKEN                                   SYMBOL                              OWED                              HELD                          GAP     GAP %  STATUS
+--------------------------------------  ------  --------------------------------  --------------------------------  ---------------------------  --------  ------
+nep141:eth.synthetic.near               ETH                               8501.2                            8496.2                           -5  -0.0588%  red
+nep141:wnear.synthetic.near             wNEAR   4200018.123456789012345678901234  4200020.123456789012345678901241  +2.000000000000000000000007   0.0000%  green
+nep141:usdc.synthetic.near              USDC                            12000012                       12000012.06                        +0.06   0.0000%  green
+nep141:usdt.synthetic.near              USDT                             9500003                           9500003                            0   0.0000%  green
+nep141:wbtc.synthetic.near              WBTC                              1201.2                       1201.200001                    +0.000001   0.0000%  green
+nep141:dai.synthetic.near               DAI                              3000012                       3000012.001                       +0.001   0.0000%  green
+nep245:hot.synthetic.near:56_SYNTHETIC  hUSDT                             750012                            750022                          +10   0.0013%  green
+
+Transitions observed
+  block 1000060   WBTC     turned AMBER
+  block 1000150   ETH      turned AMBER
+  block 1000150   WBTC     turned RED
+  block 1000180   DAI      turned AMBER
+  block 1000210   DAI      false alarm cleared (amber -> green, never red)
+  block 1000210   WBTC     RECOVERED (red -> green)
+  block 1000240   ETH      turned RED
+
+Alerts the engine queued
+  block 1000150   WBTC     turned_red
+  block 1000210   WBTC     recovered
+  block 1000240   ETH      turned_red
+  block 1000270   ETH      incident_update
+
+Expectations: PASS (7 final statuses, 7 transitions, 4 alerts match data\fixtures\synthetic\expected.json)
+
+verify OK: 1 fixture set(s) replayed offline (no network used)

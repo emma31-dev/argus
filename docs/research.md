@@ -170,7 +170,7 @@ fn mt_batch_supply(&self, token_ids: Vec<defuse_nep245::TokenId>) -> Vec<Option<
 
 Notes:
 - **`mt_tokens` exists and enumerates `total_supplies`** (https://github.com/near/intents/blob/7fe27bf7c77adf657b652e0555a4aef660b489fc/contracts/defuse/src/contract/tokens/nep245/enumeration.rs#L8-L29). Zero-supply tokens are removed from the map automatically (`DefaultMap::entry_or_default` removes entries that return to default, `crates/map-utils/src/cleanup.rs` L16-L21), so `mt_tokens` lists tokens with **non-zero supply**. The NEAR Intents team pages it with `limit` 5000 in `scripts/list_nep245_tokens.sh`. The total count is **UNVERIFIED**. Order is storage-iteration order, so use `from_index` paging and do not assume sorting.
-- `BATCH_MAX_TOKENS = 10` (`contracts/defuse/core/src/tokens.rs`) applies only to deposits, withdrawals and transfers, **not** to view methods. The batch size for `mt_batch_supply` is limited by view gas and response size only. Start with 50–100 per call, and measure.
+- `BATCH_MAX_TOKENS = 10` (`contracts/defuse/core/src/tokens.rs`) applies only to deposits, withdrawals and transfers, **not** to view methods. The batch size for `mt_batch_supply` is limited by view gas and response size only. Start with 50-100 per call, and measure.
 - Token id parsing (`crates/primitives/token-id/src/lib.rs` L85-L95, `nep245.rs` L46-L51): split at the first `:` to get the standard. For `nep245`, the contract is everything up to the **next** `:` and the inner id is **the remainder, which may contain `:`**. Standards: `nep141`, `nep171`, `nep245`, `imt`.
 - **`imt:` tokens ("intent mintable", `imt:<minter_id>:<token_id>`) have no external backing by design.** They are compiled in only with the `imt` / `far` feature. The default reproducible build is `--features=contract` (no `imt`), see `contracts/defuse/Cargo.toml`. Whether `intents.near` has them is **UNVERIFIED**. Argus must skip `imt:` (and `nep171:`) ids.
 - `owed(T)` = `mt_supply(T)` includes all internal holders, including the fee collector. That is the right "owed" quantity.
@@ -231,7 +231,7 @@ TokenResponse:
     contractAddress: string (optional) # origin-chain address; absent for natives
 ```
 
-- **Live count and live sample: NOT obtained.** WebFetch and curl cannot reach the host. A third-party repository reports "`GET https://1click.chaindefuser.com/v0/tokens` — 186 assets across 35 chains" as of about 2026-09 (https://github.com/BonneVoyager/price-check-tool/blob/de47a8d056ce27892780e728c70eb4ea2f07d1f6/README.md , L1262). **UNVERIFIED** for today. The only real sample entry I can quote is the spec example above. I did not invent the other two.
+- **Live count and live sample: NOT obtained.** WebFetch and curl cannot reach the host. A third-party repository reports "`GET https://1click.chaindefuser.com/v0/tokens`: 186 assets across 35 chains" as of about 2026-09 (https://github.com/BonneVoyager/price-check-tool/blob/de47a8d056ce27892780e728c70eb4ea2f07d1f6/README.md , L1262). **UNVERIFIED** for today. The only real sample entry I can quote is the spec example above. I did not invent the other two.
 - Caveats: 1Click lists *swappable* assets, not everything `intents.near` holds. `mt_tokens` is the ground truth. The frontend list also contains `1cs_v1:` ids (e.g. `1cs_v1:near:nep141:zec.omft.near`), which are **not** Intents token ids. Discovery must keep only `nep141:` and `nep245:` ids.
 
 ### 5.3 Candidate `config/tokens.yaml`
@@ -239,7 +239,7 @@ TokenResponse:
 Source for every row: NEAR Intents' own production token list, `src/tokens/production.json` in https://github.com/defuse-protocol/defuse-frontend/blob/594085d3c7e60ce912fb62b768b12f46c4917510/src/tokens/production.json (146 entries; 111 `nep141`, 32 `nep245`, 3 `1cs_v1`). Rows were chosen by the list's `tvol:` (trading-volume rank) and `mc:` tags. `decimals` is the NEAR-side decimals from that file. **`probe held` should confirm each one** with `ft_metadata` / mt metadata; that was not done here.
 
 ```yaml
-# config/tokens.yaml — source: defuse-protocol/defuse-frontend@594085d src/tokens/production.json (2026-10-06)
+# config/tokens.yaml, source: defuse-protocol/defuse-frontend@594085d src/tokens/production.json (2026-10-06)
 # held(T): nep141 -> <contract>.ft_balance_of(intents.near); nep245 -> <contract>.mt_balance_of(intents.near, <inner_id>)
 tokens:
   - {id: "nep141:wrap.near", symbol: wNEAR, decimals: 24, standard: nep141, contract: wrap.near, inner_id: null}
@@ -437,7 +437,7 @@ The serialization of `storage_deposit` and `min_gas` (string or number) is **UNV
 
 ## 9. Free USD price source (P1)
 
-- **1Click `/v0/tokens` includes `price` (USD, float) and `priceUpdatedAt` for each `assetId`, with no auth** (section 5.2). It is keyed directly by Intents token id, so no symbol mapping is needed. Its rate limit is undocumented (**UNVERIFIED**). Refreshing every 5–15 min should be modest. The 1Click service also charges 0.2% on unauthenticated *quotes* (third-party note, price-check-tool README L519), which doesn't matter for `/v0/tokens`.
+- **1Click `/v0/tokens` includes `price` (USD, float) and `priceUpdatedAt` for each `assetId`, with no auth** (section 5.2). It is keyed directly by Intents token id, so no symbol mapping is needed. Its rate limit is undocumented (**UNVERIFIED**). Refreshing every 5-15 min should be modest. The 1Click service also charges 0.2% on unauthenticated *quotes* (third-party note, price-check-tool README L519), which doesn't matter for `/v0/tokens`.
 - `price` is a float. Use it **only** for display or USD-threshold conversion, never in gap math. Keep gap math in `math/big` on raw units.
 - Tokens that `mt_tokens` finds but 1Click doesn't list will have no USD value. Show "n/a".
 - Alternative (not researched in depth): CoinGecko's public API, which needs a mapping and has its own free-tier rules. **UNVERIFIED.**

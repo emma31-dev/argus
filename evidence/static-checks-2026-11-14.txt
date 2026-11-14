@@ -1,0 +1,21 @@
+﻿# static checks, 2026-11-14
+# go version: 
+go version go1.27.4 windows/amd64
+
+# go vet ./...
+
+EXIT=0
+
+# CGO_ENABLED=0 go build ./...
+
+EXIT=0
+
+# go mod tidy -diff
+
+EXIT=0
+
+# gofmt -l .
+clean
+EXIT=0
+
+# govulncheck: not installed on this machine
