@@ -566,7 +566,8 @@ server.listen(cfg.port, () => {
 
 if (args.has('with-vite')) {
 	const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-	const vite = spawn(path.join(root, 'node_modules', '.bin', 'vite'), ['dev'], { cwd: root, stdio: 'inherit' });
+	// Run Vite through Node so the same command works on Windows and POSIX.
+	const vite = spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'dev'], { cwd: root, stdio: 'inherit' });
 	const stop = () => {
 		vite.kill('SIGTERM');
 		server.close();
