@@ -9,6 +9,7 @@
 	import StatusHero from '#lib/components/StatusHero.svelte';
 	import TokenTable from '#lib/components/TokenTable.svelte';
 	import OfflineBanner from '#lib/components/OfflineBanner.svelte';
+	import SetupPanel from '#lib/components/SetupPanel.svelte';
 	import StaleBanner from '#lib/components/StaleBanner.svelte';
 	import ProvidersBanner from '#lib/components/ProvidersBanner.svelte';
 	import BlockLink from '#lib/components/BlockLink.svelte';
@@ -23,6 +24,9 @@
 	const status = $derived(monitor.status.data);
 	const error = $derived(tokens.error ?? monitor.status.error);
 	const hasOpen = $derived((status?.open_incidents ?? 0) > 0);
+	// First load failed and there is nothing cached: show how to start the API
+	// instead of a page full of empty states.
+	const offline = $derived(monitor.offline && monitor.status.settled && !status);
 
 	onMount(() =>
 		poll(
@@ -50,6 +54,9 @@
 		actually holds, for every token. If the ledger ever owes more than it holds, it shows here.
 	</PageHeader>
 
+	{#if offline}
+		<SetupPanel {retry} />
+	{:else}
 	<div class="stack">
 		{#if error && (monitor.status.settled || tokens.settled)}
 			<OfflineBanner {error} {retry} hasData={!!status} />
@@ -128,6 +135,7 @@
 			<TokenTable tokens={tokens.data?.tokens ?? null} loading={tokens.loading} />
 		{/if}
 	</section>
+	{/if}
 </div>
 
 <style>

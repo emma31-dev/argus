@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ApiError } from '#lib/api.ts';
+	import { href } from '#lib/links.ts';
 	import Banner from './Banner.svelte';
 	import Icon from './Icon.svelte';
 
@@ -24,9 +25,14 @@
 		The Argus API could not be reached{hasData ? ', so the numbers below are from the last successful check' : ''}.
 		Argus will keep retrying automatically.
 		{#snippet action()}
-			<button class="btn" type="button" onclick={onRetry} disabled={busy}>
-				<Icon name="refresh" size={14} />{busy ? 'Retrying…' : 'Retry now'}
-			</button>
+			<div class="acts">
+				{#if !hasData}
+					<a class="btn btn-ghost" href={`${href.home()}#setup`}>Run it locally</a>
+				{/if}
+				<button class="btn" type="button" onclick={onRetry} disabled={busy}>
+					<Icon name="refresh" size={14} />{busy ? 'Retrying…' : 'Retry now'}
+				</button>
+			</div>
 		{/snippet}
 	</Banner>
 {:else}
@@ -39,3 +45,12 @@
 		{/snippet}
 	</Banner>
 {/if}
+
+<style>
+	.acts {
+		display: flex;
+		align-items: center;
+		gap: var(--s-2);
+		flex-wrap: wrap;
+	}
+</style>
